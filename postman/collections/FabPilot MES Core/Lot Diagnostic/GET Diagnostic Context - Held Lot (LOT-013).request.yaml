@@ -1,0 +1,70 @@
+$kind: http-request
+name: 'GET Diagnostic Context - Held Lot (LOT-013)'
+method: GET
+url: '{{app_base_url}}/api/lots/{{lot_query_held_code}}/diagnostic-context'
+description: 'Happy path: retrieves LOT-013 diagnostic context for the RUNNING and HELD alarm scenario.'
+order: 1000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const json = pm.response.json();
+      const diagnostic = json.data;
+      const hasDiagnosticData = pm.response.code === 200
+        && json.success === true
+        && diagnostic
+        && diagnostic.lot;
+
+      pm.test("Status code is 200", function () {
+        pm.response.to.have.status(200);
+      });
+
+      pm.test("Response contains the diagnostic data envelope", function () {
+        pm.expect(json.success).to.eql(true);
+        pm.expect(json.code).to.eql("SUCCESS");
+        pm.expect(diagnostic, "Expected response.data; verify the selected environment and Lot variable")
+          .to.be.an("object");
+        pm.expect(diagnostic && diagnostic.lot, "Expected response.data.lot")
+          .to.be.an("object");
+      });
+
+      if (hasDiagnosticData) {
+        pm.test("Lot snapshot is LOT-013, RUNNING and HELD", function () {
+          pm.expect(diagnostic.lot.code).to.eql("LOT-013");
+          pm.expect(diagnostic.lot.executionStatus).to.eql("RUNNING");
+          pm.expect(diagnostic.lot.holdStatus).to.eql("HELD");
+          pm.expect(diagnostic.lot.quantity).to.eql(20);
+          pm.expect(diagnostic.lot.lastTransactionCode).to.eql("HOLD");
+        });
+
+        pm.test("Work order and current Step are correct", function () {
+          pm.expect(diagnostic.workOrder.code).to.eql("WO-2026-008");
+          pm.expect(diagnostic.workOrder.status).to.eql("IN_PROGRESS");
+          pm.expect(diagnostic.currentStep.stepCode).to.eql("STEP-ETCH-020");
+          pm.expect(diagnostic.currentStep.operationCode).to.eql("ETCH");
+        });
+
+        pm.test("Current equipment contains the vacuum alarm", function () {
+          pm.expect(diagnostic.currentEquipment.code).to.eql("ETCH-01");
+          pm.expect(diagnostic.currentEquipment.upDownStatus).to.eql("D");
+          pm.expect(diagnostic.currentEquipment.primaryStatus).to.eql("DOWN");
+          pm.expect(diagnostic.currentEquipment.lastEventCode).to.eql("VACUUM_LOW");
+        });
+
+        pm.test("Recent Lot history contains HOLD", function () {
+          pm.expect(diagnostic.recentLotTransactions).to.be.an("array").that.is.not.empty;
+          const holdTransaction = diagnostic.recentLotTransactions.find(
+            item => item.transactionType === "HOLD");
+          pm.expect(holdTransaction).to.not.be.undefined;
+          pm.expect(holdTransaction.holdStatusAfter).to.eql("HELD");
+          pm.expect(holdTransaction.reasonCode).to.eql("VACUUM_LOW");
+        });
+
+        pm.test("Recent equipment history contains VACUUM_LOW", function () {
+          pm.expect(diagnostic.recentEquipmentEvents).to.be.an("array").that.is.not.empty;
+          const vacuumEvent = diagnostic.recentEquipmentEvents.find(
+            item => item.eventCode === "VACUUM_LOW");
+          pm.expect(vacuumEvent).to.not.be.undefined;
+          pm.expect(vacuumEvent.upDownStatusAfter).to.eql("D");
+        });
+      }

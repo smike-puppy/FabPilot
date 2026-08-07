@@ -1,0 +1,34 @@
+$kind: http-request
+name: POST Release Lot - Idempotent Replay
+method: POST
+url: '{{app_base_url}}/api/lots/{{lot_release_code}}/release'
+description: 'Replay: reuses the same idempotency key and must not update Lot or append another transaction.'
+order: 2000
+headers:
+  Content-Type: application/json
+  X-Trace-Id: '{{test_trace_prefix}}-LOT-015-RELEASE-REPLAY'
+body:
+  type: json
+  content: |-
+    {
+      "expectedVersion": {{lot_release_expected_version}},
+      "idempotencyKey": "{{lot_release_idempotency_key}}",
+      "operatorId": "{{test_operator_id}}"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status code is 200", function () {
+        pm.response.to.have.status(200);
+      });
+
+      pm.test("Replay returns the existing result", function () {
+        const json = pm.response.json();
+        pm.expect(json.success).to.eql(true);
+        pm.expect(json.data.lotCode).to.eql("LOT-015");
+        pm.expect(json.data.transactionType).to.eql("RELEASE");
+        pm.expect(json.data.executionStatus).to.eql("READY");
+        pm.expect(json.data.version).to.eql(1);
+        pm.expect(json.data.idempotent).to.eql(true);
+      });

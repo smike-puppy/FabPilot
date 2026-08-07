@@ -1,0 +1,21 @@
+$kind: http-request
+name: 'GET Diagnostic Context - Not Found (404)'
+method: GET
+url: '{{app_base_url}}/api/lots/{{lot_query_not_found_code}}/diagnostic-context'
+description: 'Negative test: verifies unified LOT_NOT_FOUND response when lot does not exist.'
+order: 3000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status code is 404", function () {
+        pm.response.to.have.status(404);
+      });
+
+      pm.test("Response uses the unified error envelope", function () {
+        const json = pm.response.json();
+        pm.expect(json.success).to.eql(false);
+        pm.expect(json.code).to.eql("LOT_NOT_FOUND");
+        pm.expect(json.message).to.be.a("string").and.not.empty;
+        pm.expect(json.traceId).to.be.a("string").and.not.empty;
+      });

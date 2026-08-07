@@ -1,0 +1,79 @@
+$kind: environment
+name: FabPilot MES Core | Local Development
+description: Local MES Core environment using Spring Boot 8080 and MySQL 3307.
+values:
+  # 01 - Application connection
+  - key: app_base_url
+    value: 'http://localhost:8080'
+    enabled: true
+    type: default
+
+  # 02 - Lot diagnostic scenarios
+  - key: lot_query_held_code
+    value: LOT-013
+    enabled: true
+    type: default
+  - key: lot_query_ready_code
+    value: LOT-014
+    enabled: true
+    type: default
+  - key: lot_query_not_found_code
+    value: LOT-NONEXISTENT
+    enabled: true
+    type: default
+
+  # 03 - Lot Release command scenario
+  - key: lot_release_code
+    value: LOT-015
+    enabled: true
+    type: default
+  - key: lot_release_expected_version
+    value: '0'
+    enabled: true
+    type: default
+  - key: lot_release_idempotency_key
+    value: POSTMAN-LOT-015-RELEASE-001
+    enabled: true
+    type: default
+
+  # 04 - Lot Track In command scenario
+  - key: lot_track_in_code
+    value: LOT-016
+    enabled: true
+    type: default
+  - key: lot_track_in_expected_version
+    value: '0'
+    enabled: true
+    type: default
+  - key: lot_track_in_idempotency_key
+    value: VERIFY-LOT-016-TRACK-IN-001
+    enabled: true
+    type: default
+  - key: lot_track_in_equipment_code
+    value: ETCH-02
+    enabled: true
+    type: default
+
+  # 05 - Lot Track Out command scenario
+  - key: lot_track_out_code
+    value: LOT-016
+    enabled: true
+    type: default
+  - key: lot_track_out_expected_version
+    value: '1'
+    enabled: true
+    type: default
+  - key: lot_track_out_idempotency_key
+    value: POSTMAN-LOT-016-TRACK-OUT-001
+    enabled: true
+    type: default
+
+  # 06 - Shared test identity and tracing
+  - key: test_operator_id
+    value: POSTMAN-USER
+    enabled: true
+    type: default
+  - key: test_trace_prefix
+    value: POSTMAN-FABPILOT
+    enabled: true
+    type: default

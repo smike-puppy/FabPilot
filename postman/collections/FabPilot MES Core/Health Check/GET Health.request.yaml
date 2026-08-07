@@ -1,0 +1,28 @@
+$kind: http-request
+name: GET Health
+method: GET
+url: '{{app_base_url}}/api/health'
+description: Verifies the MES Core service is up and running.
+order: 1000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status code is 200", function () {
+        pm.response.to.have.status(200);
+      });
+      pm.test("Response has status UP", function () {
+        const json = pm.response.json();
+        pm.expect(json.data.status).to.eql("UP");
+      });
+      pm.test("Response has service name mes-core", function () {
+        const json = pm.response.json();
+        pm.expect(json.data.service).to.eql("mes-core");
+      });
+      pm.test("Response has a timestamp", function () {
+        const json = pm.response.json();
+        pm.expect(json.timestamp).to.be.a("string");
+      });
+      pm.test("Response time is under 500ms", function () {
+        pm.expect(pm.response.responseTime).to.be.below(500);
+      });

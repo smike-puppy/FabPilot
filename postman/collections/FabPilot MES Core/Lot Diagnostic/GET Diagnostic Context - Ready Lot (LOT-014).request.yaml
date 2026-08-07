@@ -1,0 +1,45 @@
+$kind: http-request
+name: 'GET Diagnostic Context - Ready Lot (LOT-014)'
+method: GET
+url: '{{app_base_url}}/api/lots/{{lot_query_ready_code}}/diagnostic-context'
+description: 'Happy path: retrieves LOT-014, which is READY and not assigned to equipment.'
+order: 2000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const json = pm.response.json();
+      const diagnostic = json.data;
+      const hasDiagnosticData = pm.response.code === 200
+        && json.success === true
+        && diagnostic
+        && diagnostic.lot;
+
+      pm.test("Status code is 200", function () {
+        pm.response.to.have.status(200);
+      });
+
+      pm.test("Response contains the diagnostic data envelope", function () {
+        pm.expect(json.success).to.eql(true);
+        pm.expect(json.code).to.eql("SUCCESS");
+        pm.expect(diagnostic, "Expected response.data; verify the selected environment and Lot variable")
+          .to.be.an("object");
+        pm.expect(diagnostic && diagnostic.lot, "Expected response.data.lot")
+          .to.be.an("object");
+      });
+
+      if (hasDiagnosticData) {
+        pm.test("Lot snapshot is LOT-014, READY and RELEASED", function () {
+          pm.expect(diagnostic.lot.code).to.eql("LOT-014");
+          pm.expect(diagnostic.lot.executionStatus).to.eql("READY");
+          pm.expect(diagnostic.lot.holdStatus).to.eql("RELEASED");
+        });
+
+        pm.test("Lot is not assigned to equipment", function () {
+          pm.expect(diagnostic.currentEquipment).to.be.null;
+        });
+
+        pm.test("Work order is WO-2026-008", function () {
+          pm.expect(diagnostic.workOrder.code).to.eql("WO-2026-008");
+        });
+      }

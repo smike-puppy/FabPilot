@@ -1,0 +1,13 @@
+$kind: http-request
+name: 'GET Diagnostic Context - Empty LotCode (Edge Case)'
+method: GET
+url: '{{app_base_url}}/api/lots/ /diagnostic-context'
+description: 'Edge case: tests behavior when lot code is a blank/whitespace string. Expects 4xx response.'
+order: 4000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Response is a client error (4xx)", function () {
+        pm.expect(pm.response.code).to.be.within(400, 499);
+      });
