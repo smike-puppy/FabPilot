@@ -183,3 +183,95 @@
   - 临时 8081 实例及验证日志已清理；用户 IntelliJ 8080 进程未改动。
 - 下一步：实现 Track Out，复用当前命令支持与双快照/双履历事务模式，并处理下一 Step 与末工序完成分支。
 - 阻塞项：无。
+### 2026-08-07：完成 Lot Track Out 写侧闭环
+
+- 新增 POST /api/lots/{lotCode}/track-out；设备由 Lot 当前绑定关系确定。
+- 仅允许 RUNNING + RELEASED 且已绑定 Step 和 Equipment 的 Lot 下机。
+- 普通工序推进到下一 Step 并变为 READY；末工序变为 COMPLETED 并写入 completed_at。
+- 同一事务释放 Equipment 为 U + IDLE，并追加 LotTransaction 与 EquipmentHistory。
+- 支持 Lot/Equipment 乐观锁与 Track Out 幂等重放。
+- 新增 Service/Controller 自动化测试、静态 Postman 请求及 docs/TRACK_OUT_MANUAL_TEST.md；按用户要求未执行 Postman/HTTP 请求。
+- 全量验证：JDK 21 mvn test 共 19 个测试，失败 0、错误 0、跳过 0；git diff --check HEAD 通过。
+- 只读数据库核对：LOT-016 为 RUNNING + RELEASED、version=1、STEP-ETCH-020 / ETCH、绑定 ETCH-02；设备 U + PROC、version=1，completed_at=NULL；目标幂等键两类履历均为 0。
+- 下一步：用户按人工测试文档执行 Track Out 并返回结果，再继续 Hold / Release Hold。
+- 阻塞项：无。
+### 2026-08-08：完成 Lot Hold 写侧闭环
+
+- 新增 POST /api/lots/{lotCode}/hold，请求包含 expectedVersion、idempotencyKey、operatorId、reasonCode 与 reasonText。
+- 仅允许 READY 或 RUNNING 且 hold_status=RELEASED、当前 Step 有效的 Lot 执行 Hold。
+- Hold 保持 execution_status 和当前设备绑定不变，仅将 hold_status 从 RELEASED 更新为 HELD。
+- 同一事务条件更新 Lot 并追加 LotTransaction(HOLD)，记录 Step、Operation、当前 Equipment、原因、操作者和版本。
+- Hold 不更新 Equipment 或 EquipmentHistory；设备 Alarm/Down 由独立设备事件服务负责。
+- 幂等重放严格比较 Lot、命令类型、reasonCode 和 reasonText，不同原因复用同一键返回 IDEMPOTENCY_CONFLICT。
+- 新增 Service、Controller 和幂等支持专项测试；全量 JDK 21 mvn test 共 29 个测试，失败 0、错误 0、跳过 0。
+- 新增静态 Postman 首执行/重放请求、环境变量和 docs/HOLD_MANUAL_TEST.md；按用户要求未执行 Postman/HTTP 请求。
+- 只读数据库确认测试前 LOT-016 为 READY + RELEASED、version=2、STEP-INSPECT-030、无绑定设备。
+- 下一步：用户按人工文档测试 Hold；随后实现 Release Hold。
+- 阻塞项：无。
+### 2026-08-08：完成 Lot Release Hold 写侧闭环
+
+- 新增 `POST /api/lots/{lotCode}/release-hold`，请求包含 expectedVersion、idempotencyKey、operatorId、reasonCode 和 reasonText。
+- 仅允许 `READY` 或 `RUNNING`、`hold_status=HELD` 且当前 Step 有效的 Lot 解除暂停。
+- Release Hold 保持 execution_status、当前 Step 和设备绑定不变，仅将 hold_status 从 `HELD` 更新为 `RELEASED`。
+- 同一事务使用版本及状态条件更新 Lot，并追加 `LotTransaction(RELEASE_HOLD)`；履历记录解除原因、操作人、Step、Operation、当前 Equipment 和版本。
+- 不更新 Equipment 或 EquipmentHistory；幂等重放严格比较命令类型及两个原因字段。
+- 新增 Service 6 个专项测试、Controller 成功/校验测试、静态 Postman 首次/重放请求及 `docs/RELEASE_HOLD_MANUAL_TEST.md`。
+- 验证结果：JDK 21 完整 `mvn test` 共 37 个测试，失败 0、错误 0、跳过 0；`git diff --check` 通过。
+- 按用户要求未执行 Postman/HTTP 请求，也未写业务数据库；只读确认测试前 `LOT-016 = READY + HELD`、version=3、`STEP-INSPECT-030`、无设备，Release Hold 目标履历为 0。
+- 下一步：用户按人工测试文档执行 Release Hold 并核对数据库；之后实现 Scrap。
+- 阻塞项：无。
+### 2026-08-08：完成 Lot Scrap 写侧闭环
+
+- 新增 `POST /api/lots/{lotCode}/scrap`，原因字段进入不可变 LotTransaction。
+- 状态机遵循设计基线：任意非终态 Lot 可转为 `SCRAPPED + RELEASED`；`COMPLETED` 和 `SCRAPPED` 拒绝再次报废。
+- Scrap 保留当前 Step 作为终态上下文，清空设备绑定，不设置 `completed_at`，并使用版本、原执行状态、原 Hold 状态及设备绑定作为条件更新。
+- 无设备场景只更新 Lot 并追加 `LotTransaction(SCRAP)`；绑定 `PROC` 设备时，同事务将设备释放为 `IDLE` 并追加 `EquipmentHistory(SCRAP)`；已由独立异常流程进入其他状态的设备不会被 Scrap 覆盖。
+- 幂等重放严格比较 Lot、命令类型、reasonCode 和 reasonText；同键不同原因返回冲突。
+- 新增 5 个 Scrap Service 专项测试、2 个 Controller 测试、静态 Postman 首次/重放请求和 `docs/SCRAP_MANUAL_TEST.md`。
+- 修复 Postman 环境中 Hold/Release Hold 中文原因值与 `enabled` 粘连的 YAML 格式问题，并追加 Scrap 变量。
+- 验证结果：JDK 21 完整 `mvn test` 共 44 个测试，失败 0、错误 0、跳过 0；`git diff --check` 通过。
+- 按用户要求未执行 Postman/HTTP 请求，也未写业务数据库；只读确认测试前 `LOT-016 = READY + RELEASED`、version=4、`STEP-INSPECT-030`、无设备，Scrap 目标履历为 0。
+- 下一步：用户按人工测试文档执行 Scrap 并核对数据库；Lot MVP 写侧命令已完整，随后进入设备事件写侧服务。
+- 阻塞项：无。
+### 2026-08-08：补充 Lot 写侧业务规则注释
+
+- 为 Release、Track In、Track Out、Hold、Release Hold、Scrap 六个命令入口补充“前置状态、执行步骤、成功结果”的流程注释。
+- 为全部状态校验、工艺/设备校验、条件快照更新和 Lot/Equipment 履历方法补充规则依据及字段变化说明。
+- 重写 Controller、LotCommandService、LotCommandSupport、公共版本请求 DTO、六个请求 DTO 和双状态枚举中的乱码注释，统一为 UTF-8 中文业务说明。
+- 静态验证：`git diff --check` 通过，关键规则注释检索覆盖成功。
+- 后续重构完成后已执行 JDK 21 完整 `mvn test`，最终 51 个测试全部通过，确认注释整理未改变业务行为。
+- 下一步：后续新增代码继续使用相同的“业务规则、执行步骤、规则理由”注释方式。
+- 阻塞项：无。
+### 2026-08-08：人工测试文档增加“业务流程与编码依据”约定
+
+- 后续每个 `*_MANUAL_TEST.md` 在测试前 SQL 和请求示例之前，必须增加“业务流程与编码依据”章节。
+- 该章节使用中文按实际代码执行顺序描述：功能目标、允许的前置状态、幂等检查、版本校验、状态/资源校验、事务内快照更新、不可变履历、成功结果和失败边界。
+- 每一项关键校验需要同时说明“校验什么”和“为什么校验”，让测试人员在阅读代码前先掌握实现大纲和编码方向。
+- 对涉及 Lot 与 Equipment 的命令，还要明确两个聚合分别是否变化、为什么变化，以及失败时如何依靠事务回滚保持一致。
+- 文档建议固定结构：1. 业务目标；2. 状态迁移；3. 执行顺序与理由；4. 事务和并发保护；5. 测试前数据；6. 请求；7. 测试后预期；8. 幂等重放与异常场景。
+### 2026-08-08：统一改造现有人工测试文档
+
+- 已重写 `TRACK_OUT_MANUAL_TEST.md`、`HOLD_MANUAL_TEST.md`、`RELEASE_HOLD_MANUAL_TEST.md`、`SCRAP_MANUAL_TEST.md`，修复原有中文乱码。
+- 四份文档均增加“业务流程与编码依据”，包含业务目标、状态迁移、代码执行顺序、每项校验理由以及事务一致性说明。
+- Track Out 文档明确普通工序与末工序分支；Scrap 文档明确无设备、PROC 设备及 DOWN/MAINTENANCE 设备三种资源处理分支。
+- 保留并整理测试前 SQL、请求 JSON、首次响应、发送后 SQL、数据表预期、幂等重放和异常场景。
+- 验证结果：四份文档的规定章节均存在，常见乱码扫描为 0，`git diff --check` 通过；未执行 Postman/HTTP 请求，未修改业务数据库。
+- 下一步：后续新增人工测试文档继续使用相同模板。
+- 阻塞项：无；代码注释整理已随公共逻辑重构完成 Maven 回归。
+### 2026-08-08：完成 Lot 命令公共逻辑重构
+
+- 重构目标：减少 Release、Track In、Track Out、Hold、Release Hold、Scrap 六个命令之间的重复代码，同时保持状态机、事务、乐观锁、幂等和审计语义不变。
+- 新增 `LotStatePolicy`，集中声明六个命令的状态准入规则；Service 通过 `assertCanRelease/TrackIn/TrackOut/Hold/ReleaseHold/Scrap` 调用具名规则，代码审查时可以直接看到每个动作的业务前提。
+- 新增 `LotTransactionFactory` 与 `LotTransactionRecordTO`，统一构造 LotTransaction 的 Lot、命令类型、工艺位置、设备、状态前后值、操作人、原因、幂等键、版本和发生时间等字段。
+- 新增 `EquipmentHistoryFactory` 与 `EquipmentHistoryRecordTO`，统一构造 EquipmentHistory 的设备状态前后值、事件、操作人、角色、幂等键、版本和发生时间等字段。
+- 各命令原有 `append...Transaction` / `append...EquipmentHistory` 方法保留为薄业务适配层：只声明该命令特有的状态变化和上下文，再交给公共工厂构造，避免公共字段在六个命令中重复维护。
+- 新增 `LotCommandTestFixture`，统一创建 Lot、RouteStep 和 Equipment 的 Mockito 领域快照，减少测试准备代码重复。
+- 新增 `LotStatePolicyTest`、`LotTransactionFactoryTest`、`EquipmentHistoryFactoryTest` 共 7 个专项测试，覆盖状态准入和公共履历字段映射。
+- `LotCommandServiceImpl` 由约 1011 行降至 853 行；源码中已不存在分散的六组 `validate...State` 方法，也不存在直接 `new LotTransaction()` / `new EquipmentHistory()` 的重复构造。
+- 按用户要求未重构 `ReasonedLotCommandRequestTO`，未统一时间来源，也未提取公共审计字段模型。
+- Handler 拆分评估：去重后剩余代码主要是六个命令各自的单事务业务编排；当前不拆成六个仅搬运代码的 Handler，避免增加构造依赖和跨类跳转。后续单个命令继续增长或出现独立依赖边界时再拆分。
+- 验证结果：新增专项测试 7/7 通过；JDK 21 完整 `mvn test` 共 51 个测试，失败 0、错误 0、跳过 0；`git diff --check` 通过。
+- 验证边界：按用户要求未执行 Postman/HTTP 请求，未读取或写入业务数据库；本轮仅进行了代码编译、单元/Controller 测试和静态差异检查。
+- 变更文件：`LotCommandServiceImpl.java`、`LotStatePolicy.java`、`LotTransactionFactory.java`、`LotTransactionRecordTO.java`、`EquipmentHistoryFactory.java`、`EquipmentHistoryRecordTO.java`、`LotCommandTestFixture.java` 及三个对应专项测试文件。
+- 下一步：用户可按照现有人工测试文档自行执行 HTTP 测试并核对请求前后的表状态；代码主线可进入设备事件写侧服务。
+- 阻塞项：无。

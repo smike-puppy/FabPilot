@@ -1,0 +1,37 @@
+$kind: http-request
+name: POST Hold Lot
+method: POST
+url: '{{app_base_url}}/api/lots/{{lot_hold_code}}/hold'
+description: 'Holds LOT-016 before inspection while preserving its READY execution status.'
+order: 7000
+headers:
+  Content-Type: application/json
+  X-Trace-Id: '{{test_trace_prefix}}-LOT-016-HOLD-FIRST'
+body:
+  type: json
+  content: |-
+    {
+      "expectedVersion": {{lot_hold_expected_version}},
+      "idempotencyKey": "{{lot_hold_idempotency_key}}",
+      "operatorId": "{{test_operator_id}}",
+      "reasonCode": "{{lot_hold_reason_code}}",
+      "reasonText": "{{lot_hold_reason_text}}"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status code is 200", function () {
+        pm.response.to.have.status(200);
+      });
+
+      pm.test("Lot execution status is preserved and Hold is applied", function () {
+        const json = pm.response.json();
+        pm.expect(json.success).to.eql(true);
+        pm.expect(json.data.lotCode).to.eql("LOT-016");
+        pm.expect(json.data.transactionType).to.eql("HOLD");
+        pm.expect(json.data.executionStatus).to.eql("READY");
+        pm.expect(json.data.holdStatus).to.eql("HELD");
+        pm.expect(json.data.version).to.eql(3);
+        pm.expect(json.data.idempotent).to.be.a("boolean");
+      });

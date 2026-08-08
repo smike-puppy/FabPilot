@@ -1,27 +1,44 @@
 # Track Out 人工测试说明
 
-> 本文只描述测试前置状态、请求和预期结果。请通过 MES Core API 执行业务操作，不要直接修改业务表。
+> 只通过 MES Core API 执行业务操作，不直接修改业务表。Codex 不代发请求。
 
-## 一、普通工序 Track Out：ETCH → INSPECT
+## 1. 业务流程与编码依据
 
-### 1. 发送请求前查询
+### 1.1 业务目标与状态迁移
+
+Track Out 表示 Lot 完成当前设备上的加工并下机。服务端根据 Route 决定下一状态，调用方不能指定下一 Step。
+
+```text
+普通工序：RUNNING + RELEASED → 下一 Step 的 READY + RELEASED
+末道工序：RUNNING + RELEASED → COMPLETED + RELEASED
+设备：    U + PROC → U + IDLE
+```
+
+### 1.2 执行顺序与理由
+
+1. 查询 Lot，并优先识别幂等重放；同一成功命令重复发送不会再次下机或追加履历。
+2. 校验 `expectedVersion`，防止两个请求同时推进同一个 Lot。
+3. 校验 Lot 必须为 `RUNNING + RELEASED`，且当前 Step、Equipment 都存在：只有真正上机且未 Hold 的 Lot 才能正常下机。
+4. 读取当前 Step 和绑定设备；当前 Step 必须属于 Lot 的 Route，设备必须仍为 `U + PROC`，避免覆盖设备侧并发 Down/Maintenance 事件。
+5. 按 Route 的 sequence_no 查询下一 Step：找到则进入下一 Step 的 READY；找不到说明当前是末工序，进入 COMPLETED 并写 `completed_at`。
+6. 条件更新 Equipment 为 IDLE；再条件更新 Lot，清除设备绑定并推进 Step/终态。两个更新都带旧 version 和旧状态条件。
+7. 追加 `LotTransaction(TRACK_OUT)` 和 `EquipmentHistory(TRACK_OUT)`。Lot 履历记录“刚完成的旧 Step”，而不是下一 Step，便于还原加工事实。
+
+### 1.3 事务与一致性
+
+Lot、Equipment 两个快照和两类履历在同一事务中。任何更新或履历插入失败都会整体回滚，避免出现“设备已空闲但 Lot 仍在加工”或相反的不一致状态。
+
+## 2. 普通工序测试前数据
 
 ```sql
-SELECT
-    l.code AS lot_code,
-    l.execution_status,
-    l.hold_status,
-    l.version AS lot_version,
-    current_step.step_code AS current_step_code,
-    current_operation.code AS current_operation_code,
-    e.code AS equipment_code,
-    e.up_down_status,
-    e.primary_status,
-    e.version AS equipment_version,
-    l.completed_at
+SELECT l.code AS lot_code, l.execution_status, l.hold_status,
+       l.version AS lot_version, step.step_code,
+       operation.code AS operation_code, e.code AS equipment_code,
+       e.up_down_status, e.primary_status, e.version AS equipment_version,
+       l.completed_at
 FROM lot l
-LEFT JOIN route_step current_step ON current_step.id = l.current_route_step_id
-LEFT JOIN operation current_operation ON current_operation.id = current_step.operation_id
+LEFT JOIN route_step step ON step.id = l.current_route_step_id
+LEFT JOIN operation operation ON operation.id = step.operation_id
 LEFT JOIN equipment e ON e.id = l.current_equipment_id
 WHERE l.code = 'LOT-016';
 
@@ -39,23 +56,18 @@ FROM equipment_history
 WHERE idempotency_key = 'POSTMAN-LOT-016-TRACK-OUT-001';
 ```
 
-发送前应满足：
-
 | 数据 | 期望值 |
 |---|---|
-| Lot | `LOT-016` |
-| execution_status / hold_status | `RUNNING / RELEASED` |
+| Lot 状态 | `RUNNING / RELEASED` |
 | Lot version | `1` |
 | 当前 Step / Operation | `STEP-ETCH-020 / ETCH` |
-| 当前设备 | `ETCH-02` |
-| 设备状态 | `U / PROC` |
-| 设备 version | `1` |
+| 当前设备 | `ETCH-02`，`U / PROC`，version `1` |
 | completed_at | `NULL` |
-| 两类目标幂等履历数 | 均为 `0` |
+| 两类目标履历 | 均为 `0` |
 
-任一关键状态不一致时先停止测试，尤其不要为了匹配本文而直接更新数据库。
+任一关键状态不一致时停止测试，不要直接修改数据库。
 
-### 2. 请求
+## 3. 请求与首次响应
 
 ```http
 POST /api/lots/LOT-016/track-out
@@ -70,8 +82,6 @@ Content-Type: application/json
 }
 ```
 
-首次成功响应的业务数据应为：
-
 ```json
 {
   "lotCode": "LOT-016",
@@ -83,89 +93,50 @@ Content-Type: application/json
 }
 ```
 
-如果此前已经成功执行过同一幂等键，响应会是相同状态，但 `idempotent` 为 `true`。
+## 4. 发送后查询与预期
 
-### 3. 发送后查询
-
-重新执行第一节的 Lot 联表查询，再执行：
+重新执行第 2 节 Lot 联表查询，再执行：
 
 ```sql
-SELECT
-    transaction_type,
-    execution_status_before,
-    execution_status_after,
-    hold_status_before,
-    hold_status_after,
-    lot_version_before,
-    lot_version_after,
-    step.step_code,
-    operation.code AS operation_code,
-    equipment.code AS equipment_code,
-    operator_type,
-    operator_id,
-    idempotency_key
+SELECT tx.transaction_type, tx.execution_status_before, tx.execution_status_after,
+       tx.hold_status_before, tx.hold_status_after,
+       tx.lot_version_before, tx.lot_version_after,
+       step.step_code, operation.code AS operation_code,
+       equipment.code AS equipment_code, tx.operator_id
 FROM lot_transaction tx
 LEFT JOIN route_step step ON step.id = tx.route_step_id
 LEFT JOIN operation operation ON operation.id = tx.operation_id
 LEFT JOIN equipment equipment ON equipment.id = tx.equipment_id
 WHERE tx.idempotency_key = 'POSTMAN-LOT-016-TRACK-OUT-001';
 
-SELECT
-    event_code,
-    up_down_status_before,
-    up_down_status_after,
-    primary_status_before,
-    primary_status_after,
-    equipment_version_before,
-    equipment_version_after,
-    operator_type,
-    operator_id,
-    idempotency_key
+SELECT event_code, up_down_status_before, up_down_status_after,
+       primary_status_before, primary_status_after,
+       equipment_version_before, equipment_version_after, operator_id
 FROM equipment_history
 WHERE idempotency_key = 'POSTMAN-LOT-016-TRACK-OUT-001';
 ```
 
-发送后应满足：
-
 | 表 | 期望变化 |
 |---|---|
 | `lot` | `RUNNING → READY`，version `1 → 2` |
-| `lot` | 当前 Step 变为 `STEP-INSPECT-030` |
-| `lot` | `current_equipment_id = NULL`，`completed_at = NULL` |
-| `lot` | `last_transaction_code = TRACK_OUT`，操作者为 `POSTMAN-USER` |
-| `equipment` | `ETCH-02` 从 `PROC → IDLE`，version `1 → 2` |
-| `equipment` | `last_event_code = TRACK_OUT` |
-| `lot_transaction` | 新增且仅新增一条 `TRACK_OUT` |
-| `lot_transaction` | 记录刚完成的 `STEP-ETCH-020 / ETCH / ETCH-02` |
-| `lot_transaction` | `RUNNING → READY`，Lot version `1 → 2` |
-| `equipment_history` | 新增且仅新增一条 `TRACK_OUT` |
-| `equipment_history` | `U/PROC → U/IDLE`，设备 version `1 → 2` |
+| `lot` | 当前 Step 变为 `STEP-INSPECT-030`，设备清空，completed_at 仍为 `NULL` |
+| `equipment` | `ETCH-02` 从 `U/PROC → U/IDLE`，version `1 → 2` |
+| `lot_transaction` | 仅 1 条，记录完成的 `STEP-ETCH-020 / ETCH / ETCH-02` |
+| `equipment_history` | 仅 1 条，记录 `U/PROC → U/IDLE` |
 
-## 二、幂等重放
+## 5. 幂等与异常场景
 
-原样再次发送相同请求。虽然请求中的 `expectedVersion` 仍为 `1`，服务会先识别已完成的相同幂等命令，响应应为：
+原样重放期望 HTTP 200、Lot/Equipment version 不再增加、`idempotent=true`，两类履历仍各 1 条。对 HELD、READY、无设备的 Lot 执行期望 `LOT_STATE_INVALID`；绑定设备不再是 `U + PROC` 时期望设备状态错误；错误 version 期望版本冲突。
 
-- HTTP 200；
-- `version = 2`；
-- `idempotent = true`；
-- Lot 和 Equipment 版本不再增加；
-- 上述幂等键在 `lot_transaction` 与 `equipment_history` 中仍各只有一条。
+## 6. 末工序完成分支
 
-## 三、末工序完成分支
+普通 Track Out 后，先把 LOT-016 Track In 到 `INSPECT-01`（使用新幂等键和正确 version），再执行末工序 Track Out。预期：
 
-普通 Track Out 成功后，`LOT-016` 已在 `STEP-INSPECT-030` 等待。可按以下顺序人工验证末工序：
-
-1. Track In 到 `INSPECT-01`：`expectedVersion=2`，使用新的幂等键，例如 `MANUAL-LOT-016-TRACK-IN-INSPECT-001`。
-2. 确认 Lot 为 `RUNNING`、version=3，设备 `INSPECT-01` 为 `U/PROC`。
-3. Track Out：`expectedVersion=3`，使用新的幂等键，例如 `MANUAL-LOT-016-TRACK-OUT-INSPECT-001`。
-
-末工序 Track Out 后应满足：
-
-- Lot 为 `COMPLETED + RELEASED`，version=4；
-- `current_equipment_id = NULL`；
-- 当前 Step 保留 `STEP-INSPECT-030`，用于追溯最后完成工序；
-- `completed_at` 不为空；
-- `INSPECT-01` 恢复为 `U/IDLE`，设备 version 增加 1；
+- Lot 为 `COMPLETED + RELEASED`；
+- current_equipment_id 为 `NULL`；
+- 当前 Step 保留 `STEP-INSPECT-030`，用于追溯最后工序；
+- completed_at 不为空；
+- `INSPECT-01` 恢复 `U/IDLE`；
 - LotTransaction 记录 `RUNNING → COMPLETED`；
 - EquipmentHistory 记录 `PROC → IDLE`；
-- 同幂等键重放不会再次更新或新增履历。
+- 同键重放不会重复更新或追加履历。

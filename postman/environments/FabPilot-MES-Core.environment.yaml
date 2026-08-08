@@ -68,7 +68,73 @@ values:
     enabled: true
     type: default
 
-  # 06 - Shared test identity and tracing
+  # 06 - Lot Hold command scenario
+  - key: lot_hold_code
+    value: LOT-016
+    enabled: true
+    type: default
+  - key: lot_hold_expected_version
+    value: '2'
+    enabled: true
+    type: default
+  - key: lot_hold_idempotency_key
+    value: POSTMAN-LOT-016-HOLD-001
+    enabled: true
+    type: default
+  - key: lot_hold_reason_code
+    value: QUALITY_CHECK
+    enabled: true
+    type: default
+  - key: lot_hold_reason_text
+    value: 检测工序前需要复核质量数据
+    enabled: true
+    type: default
+
+  # 07 - Lot Release Hold command scenario
+  - key: lot_release_hold_code
+    value: LOT-016
+    enabled: true
+    type: default
+  - key: lot_release_hold_expected_version
+    value: '3'
+    enabled: true
+    type: default
+  - key: lot_release_hold_idempotency_key
+    value: POSTMAN-LOT-016-RELEASE-HOLD-001
+    enabled: true
+    type: default
+  - key: lot_release_hold_reason_code
+    value: QUALITY_CHECK_RESOLVED
+    enabled: true
+    type: default
+  - key: lot_release_hold_reason_text
+    value: 质量数据复核完成，允许继续检测
+    enabled: true
+    type: default
+
+  # 08 - Lot Scrap command scenario
+  - key: lot_scrap_code
+    value: LOT-016
+    enabled: true
+    type: default
+  - key: lot_scrap_expected_version
+    value: '4'
+    enabled: true
+    type: default
+  - key: lot_scrap_idempotency_key
+    value: POSTMAN-LOT-016-SCRAP-001
+    enabled: true
+    type: default
+  - key: lot_scrap_reason_code
+    value: INSPECTION_REJECT
+    enabled: true
+    type: default
+  - key: lot_scrap_reason_text
+    value: 检测结果超出规格，确认报废
+    enabled: true
+    type: default
+
+  # 09 - Shared test identity and tracing
   - key: test_operator_id
     value: POSTMAN-USER
     enabled: true

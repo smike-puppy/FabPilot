@@ -1,12 +1,7 @@
 package com.fabpilot.mescore.lot.enums;
-
-/** lot.hold_status 字段允许的暂停状态。 */
+/** 与执行阶段正交的暂停状态：暂停不会自动改变 Step、设备绑定或执行阶段。 */
 public enum LotHoldStatus {
-    RELEASED,
-    HELD;
-
-    /** 返回写入数据库和接口响应使用的稳定值。 */
-    public String databaseValue() {
-        return name();
-    }
+    /** 未暂停，满足其他规则时可以继续生产流转。 */ RELEASED,
+    /** 已暂停，禁止 Track In、Track Out 和正常 Finish。 */ HELD;
+    public String databaseValue() { return name(); }
 }

@@ -1,17 +1,13 @@
 package com.fabpilot.mescore.lot.dto;
-
 import com.fabpilot.mescore.common.command.dto.VersionedCommandRequestTO;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-
-/** Release Lot 的请求数据；当前没有 Release 独有字段。 */
+/** Release 没有额外业务参数：目标首 Step 由 Lot 所属 Route 决定。 */
 @Data
 @EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 public class ReleaseLotRequestTO extends VersionedCommandRequestTO {
-
-    /** 便于测试和内部调用直接构造完整 Release 请求。 */
     public ReleaseLotRequestTO(Long expectedVersion, String idempotencyKey, String operatorId) {
         super(expectedVersion, idempotencyKey, operatorId);
     }
