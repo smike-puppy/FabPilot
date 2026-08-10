@@ -22,7 +22,10 @@ import com.fabpilot.mescore.lot.mapper.LotMapper;
 import com.fabpilot.mescore.lot.mapper.LotTransactionMapper;
 import com.fabpilot.mescore.lot.model.Lot;
 import com.fabpilot.mescore.lot.service.LotCommandService;
+import com.fabpilot.mescore.lot.service.policy.LotRoutePolicy;
 import com.fabpilot.mescore.lot.service.policy.LotStatePolicy;
+import com.fabpilot.mescore.lot.service.policy.TrackInPolicy;
+import com.fabpilot.mescore.lot.service.policy.TrackOutPolicy;
 import com.fabpilot.mescore.lot.service.recording.LotTransactionFactory;
 import com.fabpilot.mescore.lot.service.recording.LotTransactionRecordTO;
 import com.fabpilot.mescore.lot.service.support.LotCommandSupport;
@@ -392,9 +395,7 @@ public class LotCommandServiceImpl implements LotCommandService {
         }
 
         RouteStep routeStep = routeStepMapper.selectById(lot.getCurrentRouteStepId());
-        boolean validStep = routeStep != null
-                && lot.getRouteId().equals(routeStep.getRouteId())
-                && routeStep.getRequiredEquipmentGroupId() != null;
+        boolean validStep = LotRoutePolicy.isCurrentStepValid(lot, routeStep);
         if (!validStep) {
             throw new LotCommandException(
                     LotCommandErrorCode.LOT_STATE_INVALID,
@@ -420,33 +421,18 @@ public class LotCommandServiceImpl implements LotCommandService {
     private void validateEquipmentForTrackIn(
             Equipment equipment,
             RouteStep routeStep) {
-        boolean available = EQUIPMENT_UP.equals(equipment.getUpDownStatus())
-                && EQUIPMENT_IDLE.equals(equipment.getPrimaryStatus());
-        if (!available) {
-            throw new LotCommandException(
-                    LotCommandErrorCode.EQUIPMENT_STATE_INVALID,
-                    "Equipment must be U and IDLE");
-        }
+        TrackInPolicy.assertEquipmentAvailable(equipment);
 
         int membershipCount = equipmentMapper.countGroupMembership(
                 routeStep.getRequiredEquipmentGroupId(),
                 equipment.getId());
-        if (membershipCount != 1) {
-            throw new LotCommandException(
-                    LotCommandErrorCode.EQUIPMENT_CAPABILITY_MISMATCH,
-                    "Equipment does not match the current route step");
-        }
+        TrackInPolicy.assertRequiredCapability(membershipCount);
+
     }
 
     /** Track Out 只能释放仍处于 U + PROC 的设备，防止覆盖设备侧已发生的 Down/Maintenance 等独立事件。 */
     private void validateEquipmentForTrackOut(Equipment equipment) {
-        boolean processing = EQUIPMENT_UP.equals(equipment.getUpDownStatus())
-                && EQUIPMENT_PROCESSING.equals(equipment.getPrimaryStatus());
-        if (!processing) {
-            throw new LotCommandException(
-                    LotCommandErrorCode.EQUIPMENT_STATE_INVALID,
-                    "Track Out equipment must be U and PROC");
-        }
+        TrackOutPolicy.assertEquipmentProcessing(equipment);
     }
 
     /** 再查 Lot 占用关系，防止设备虽显示 IDLE，但实际上已经被另一个 Lot 绑定。 */
@@ -454,11 +440,7 @@ public class LotCommandServiceImpl implements LotCommandService {
         Long occupiedCount = lotMapper.selectCount(
                 Wrappers.<Lot>lambdaQuery()
                         .eq(Lot::getCurrentEquipmentId, equipment.getId()));
-        if (occupiedCount > 0) {
-            throw new LotCommandException(
-                    LotCommandErrorCode.EQUIPMENT_OCCUPIED,
-                    "Equipment is occupied by another Lot");
-        }
+        TrackInPolicy.assertNotOccupied(occupiedCount);
     }
 
     /** 条件更新 CREATED Lot 为 READY，并写入首 Step、最后交易、操作人和新版本；旧版本条件用于阻止并发覆盖。 */

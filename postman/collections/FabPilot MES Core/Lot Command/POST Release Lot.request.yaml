@@ -1,19 +1,19 @@
 $kind: http-request
 name: POST Release Lot
 method: POST
-url: '{{app_base_url}}/api/lots/{{lot_release_code}}/release'
+url: 'http://localhost:8080/api/lots/LOT-015/release'
 description: 'Executes LOT-015 Release or safely replays the already completed command with the same idempotency key.'
 order: 1000
 headers:
   Content-Type: application/json
-  X-Trace-Id: '{{test_trace_prefix}}-LOT-015-RELEASE-FIRST'
+  X-Trace-Id: 'POSTMAN-FABPILOT-LOT-015-RELEASE-FIRST'
 body:
   type: json
   content: |-
     {
-      "expectedVersion": {{lot_release_expected_version}},
-      "idempotencyKey": "{{lot_release_idempotency_key}}",
-      "operatorId": "{{test_operator_id}}"
+      "expectedVersion": 0,
+      "idempotencyKey": "POSTMAN-LOT-015-RELEASE-001",
+      "operatorId": "POSTMAN-USER"
     }
 scripts:
   - type: afterResponse
@@ -36,7 +36,7 @@ scripts:
 
       pm.test("Trace ID is returned", function () {
         const json = pm.response.json();
-        pm.expect(json.traceId).to.eql("{{test_trace_prefix}}-LOT-015-RELEASE-FIRST");
+        pm.expect(json.traceId).to.eql("POSTMAN-FABPILOT-LOT-015-RELEASE-FIRST");
         pm.expect(pm.response.headers.get("X-Trace-Id"))
-          .to.eql("{{test_trace_prefix}}-LOT-015-RELEASE-FIRST");
+          .to.eql("POSTMAN-FABPILOT-LOT-015-RELEASE-FIRST");
       });

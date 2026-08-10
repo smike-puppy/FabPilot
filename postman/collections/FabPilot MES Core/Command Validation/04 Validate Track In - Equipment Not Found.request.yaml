@@ -1,0 +1,52 @@
+$kind: http-request
+name: '04 Validate Track In - Equipment Not Found'
+method: POST
+url: 'http://localhost:8080/api/command-validations'
+description: '只读失败场景：设备编码不存在；EQUIPMENT_EXISTS 失败，设备状态、能力和占用规则应标记为未执行。'
+order: 13300
+headers:
+  Content-Type: application/json
+  X-Trace-Id: 'POSTMAN-VALIDATE-TRACK-IN-EQUIPMENT-NOT-FOUND-001'
+body:
+  type: json
+  content: |-
+    {
+      "commandType": "TRACK_IN",
+      "targetType": "LOT",
+      "targetCode": "LOT-014",
+      "expectedVersion": 2,
+      "equipmentCode": "EQUIPMENT-NOT-FOUND"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const json = pm.response.json();
+      const result = json.data;
+      const byCode = function (ruleCode) {
+        return result.checks.find(function (check) {
+          return check.ruleCode === ruleCode;
+        });
+      };
+
+      pm.test("Missing equipment is a structured precheck result", function () {
+        pm.response.to.have.status(200);
+        pm.expect(json.success).to.eql(true);
+        pm.expect(result.allowed).to.eql(false);
+        pm.expect(result.observedVersion).to.eql(2);
+        pm.expect(result.checks).to.have.length(13);
+      });
+
+      pm.test("EQUIPMENT_EXISTS fails with stable error code", function () {
+        pm.expect(byCode("EQUIPMENT_EXISTS").evaluated).to.eql(true);
+        pm.expect(byCode("EQUIPMENT_EXISTS").passed).to.eql(false);
+        pm.expect(byCode("EQUIPMENT_EXISTS").errorCode).to.eql("EQUIPMENT_NOT_FOUND");
+      });
+
+      pm.test("Rules depending on equipment are not evaluated", function () {
+        ["EQUIPMENT_UP", "EQUIPMENT_IDLE", "EQUIPMENT_CAPABILITY_MATCH",
+          "EQUIPMENT_NOT_OCCUPIED"].forEach(function (ruleCode) {
+          pm.expect(byCode(ruleCode).evaluated, ruleCode + " should not be evaluated").to.eql(false);
+          pm.expect(byCode(ruleCode).passed).to.eql(false);
+        });
+      });

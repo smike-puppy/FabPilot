@@ -1,0 +1,34 @@
+$kind: http-request
+name: 01 Start Maintenance
+method: POST
+url: 'http://localhost:8080/api/equipment-events'
+description: '专用设备状态切换测试。发送前按 docs/EQUIPMENT_EVENT_MANUAL_TEST.md 查询数据库前置状态；本请求不会由 Codex 自动执行。'
+order: 9000
+headers:
+  Content-Type: application/json
+  X-Trace-Id: 'POSTMAN-FABPILOT-EQP-STATE-9000'
+body:
+  type: json
+  content: |-
+    {
+      "equipmentCode": "EQP-STATE-TEST-01",
+      "eventCode": "START_MAINTENANCE",
+      "expectedVersion": 0,
+      "idempotencyKey": "POSTMAN-EQP-STATE-START-20260808-01",
+      "operatorId": "POSTMAN-USER",
+      "operatorType": "USER",
+      "reasonCode": "PLANNED_MAINTENANCE",
+      "reasonText": "专用测试设备开始维护"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("状态切换成功", function () {
+        pm.response.to.have.status(200);
+        const json = pm.response.json();
+        pm.expect(json.success).to.eql(true);
+        pm.expect(json.data.primaryStatus).to.eql("MAINTENANCE");
+        pm.expect(json.data.version).to.eql(1);
+        pm.expect(json.data.idempotent).to.eql(false);
+      });

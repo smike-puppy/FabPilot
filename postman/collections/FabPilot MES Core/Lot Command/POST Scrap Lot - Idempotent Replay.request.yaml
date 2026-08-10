@@ -1,21 +1,21 @@
 $kind: http-request
 name: POST Scrap Lot - Idempotent Replay
 method: POST
-url: '{{app_base_url}}/api/lots/{{lot_scrap_code}}/scrap'
+url: 'http://localhost:8080/api/lots/LOT-016/scrap'
 description: 'Scraps LOT-016 as a terminal operation and records the rejection reason.'
 order: 12000
 headers:
   Content-Type: application/json
-  X-Trace-Id: '{{test_trace_prefix}}-LOT-016-SCRAP-REPLAY'
+  X-Trace-Id: 'POSTMAN-FABPILOT-LOT-016-SCRAP-REPLAY'
 body:
   type: json
   content: |-
     {
-      "expectedVersion": {{lot_scrap_expected_version}},
-      "idempotencyKey": "{{lot_scrap_idempotency_key}}",
-      "operatorId": "{{test_operator_id}}",
-      "reasonCode": "{{lot_scrap_reason_code}}",
-      "reasonText": "{{lot_scrap_reason_text}}"
+      "expectedVersion": 4,
+      "idempotencyKey": "POSTMAN-LOT-016-SCRAP-001",
+      "operatorId": "POSTMAN-USER",
+      "reasonCode": "INSPECTION_REJECT",
+      "reasonText": "检测结果超出规格，确认报废"
     }
 scripts:
   - type: afterResponse

@@ -1,7 +1,7 @@
 $kind: http-request
 name: 'GET Diagnostic Context - Ready Lot (LOT-014)'
 method: GET
-url: '{{app_base_url}}/api/lots/{{lot_query_ready_code}}/diagnostic-context'
+url: 'http://localhost:8080/api/lots/LOT-014/diagnostic-context'
 description: 'Happy path: retrieves LOT-014, which is READY and not assigned to equipment.'
 order: 2000
 scripts:

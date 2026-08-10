@@ -1,0 +1,52 @@
+$kind: http-request
+name: '03 Validate Track In - Lot Not Found'
+method: POST
+url: 'http://localhost:8080/api/command-validations'
+description: '只读失败场景：Lot 编码不存在；LOT_EXISTS 失败，依赖 Lot 的规则应标记为未执行，而不是伪造其他业务结论。'
+order: 13200
+headers:
+  Content-Type: application/json
+  X-Trace-Id: 'POSTMAN-VALIDATE-TRACK-IN-LOT-NOT-FOUND-001'
+body:
+  type: json
+  content: |-
+    {
+      "commandType": "TRACK_IN",
+      "targetType": "LOT",
+      "targetCode": "LOT-NOT-FOUND",
+      "expectedVersion": 2,
+      "equipmentCode": "ETCH-02"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const json = pm.response.json();
+      const result = json.data;
+      const byCode = function (ruleCode) {
+        return result.checks.find(function (check) {
+          return check.ruleCode === ruleCode;
+        });
+      };
+
+      pm.test("Missing Lot is a structured precheck result", function () {
+        pm.response.to.have.status(200);
+        pm.expect(json.success).to.eql(true);
+        pm.expect(result.allowed).to.eql(false);
+        pm.expect(result.observedVersion).to.be.null;
+        pm.expect(result.checks).to.have.length(13);
+      });
+
+      pm.test("LOT_EXISTS fails with stable error code", function () {
+        pm.expect(byCode("LOT_EXISTS").evaluated).to.eql(true);
+        pm.expect(byCode("LOT_EXISTS").passed).to.eql(false);
+        pm.expect(byCode("LOT_EXISTS").errorCode).to.eql("LOT_NOT_FOUND");
+      });
+
+      pm.test("Rules depending on Lot are not evaluated", function () {
+        ["LOT_VERSION_MATCH", "LOT_READY", "LOT_RELEASED", "LOT_WITHOUT_EQUIPMENT",
+          "CURRENT_ROUTE_STEP_VALID", "EQUIPMENT_CAPABILITY_MATCH"].forEach(function (ruleCode) {
+          pm.expect(byCode(ruleCode).evaluated, ruleCode + " should not be evaluated").to.eql(false);
+          pm.expect(byCode(ruleCode).passed).to.eql(false);
+        });
+      });

@@ -1,0 +1,30 @@
+$kind: http-request
+name: 04 Reject Invalid Source State
+method: POST
+url: 'http://localhost:8080/api/equipment-events'
+description: '在 03 后设备已是 U + IDLE，再次开始维护不符合 D + DOWN 来源状态，应拒绝且数据库不变化。'
+order: 12000
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "equipmentCode": "EQP-STATE-TEST-01",
+      "eventCode": "START_MAINTENANCE",
+      "expectedVersion": 2,
+      "idempotencyKey": "POSTMAN-EQP-STATE-INVALID-20260808-01",
+      "operatorId": "POSTMAN-USER",
+      "operatorType": "USER",
+      "reasonCode": "INVALID_RETRY",
+      "reasonText": "验证来源状态校验"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("不允许从 IDLE 直接开始维护", function () {
+        pm.response.to.have.status(409);
+        const json = pm.response.json();
+        pm.expect(json.code).to.eql("EQUIPMENT_STATE_INVALID");
+      });

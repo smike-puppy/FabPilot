@@ -1,0 +1,40 @@
+$kind: http-request
+name: 'RELEASE Reject Non-Created Lot'
+method: POST
+url: 'http://localhost:8080/api/command-validations'
+description: 'LOT-014 当前为 READY，因此 Release 预检查应拒绝；验证不会改变 Lot。'
+order: 13500
+headers:
+  Content-Type: application/json
+  X-Trace-Id: 'POSTMAN-VALIDATE-RELEASE-001'
+body:
+  type: json
+  content: |-
+    {
+      "commandType": "RELEASE",
+      "targetType": "LOT",
+      "targetCode": "LOT-014",
+      "expectedVersion": 2
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const json = pm.response.json();
+      const result = json.data;
+      const requiredCheck = result.checks.find(function (check) {
+        return check.ruleCode === "LOT_CREATED";
+      });
+
+      pm.test("Command validation returns a structured result", function () {
+        pm.response.to.have.status(200);
+        pm.expect(json.success).to.eql(true);
+        pm.expect(result.commandType).to.eql("RELEASE");
+        pm.expect(result.allowed).to.eql(false);
+        pm.expect(result.checks).to.be.an("array").that.is.not.empty;
+      });
+
+      pm.test("Expected business rule is present", function () {
+        pm.expect(requiredCheck).to.be.an("object");
+        pm.expect(requiredCheck.evaluated).to.eql(true);
+      });

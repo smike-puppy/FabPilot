@@ -1,0 +1,11 @@
+$kind: http-request
+name: 04 Start Maintenance
+method: POST
+url: 'http://localhost:8080/api/equipment-events'
+order: 16000
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {"equipmentCode":"EQP-ALARM-TEST-01","eventCode":"START_MAINTENANCE","expectedVersion":0,"idempotencyKey":"POSTMAN-ALARM-EQP-MAINT-START-001","operatorId":"ENG-001","operatorType":"USER","reasonCode":"ALARM_REPAIR","reasonText":"处理真空不足告警"}

@@ -1,0 +1,49 @@
+$kind: http-request
+name: '01 Validate Track In - Allowed'
+method: POST
+url: 'http://localhost:8080/api/command-validations'
+description: '只读预检查：LOT-014 使用当前版本 2 上 ETCH-02，11 项 Track In 规则应全部通过；请求前后数据库必须完全不变。'
+order: 13000
+headers:
+  Content-Type: application/json
+  X-Trace-Id: 'POSTMAN-VALIDATE-TRACK-IN-ALLOWED-001'
+body:
+  type: json
+  content: |-
+    {
+      "commandType": "TRACK_IN",
+      "targetType": "LOT",
+      "targetCode": "LOT-014",
+      "expectedVersion": 2,
+      "equipmentCode": "ETCH-02"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const json = pm.response.json();
+      const result = json.data;
+
+      pm.test("Status code is 200 and response envelope succeeds", function () {
+        pm.response.to.have.status(200);
+        pm.expect(json.success).to.eql(true);
+        pm.expect(json.code).to.eql("SUCCESS");
+        pm.expect(json.traceId).to.eql("POSTMAN-VALIDATE-TRACK-IN-ALLOWED-001");
+      });
+
+      pm.test("Track In is allowed for LOT-014", function () {
+        pm.expect(result.allowed).to.eql(true);
+        pm.expect(result.commandType).to.eql("TRACK_IN");
+        pm.expect(result.targetType).to.eql("LOT");
+        pm.expect(result.targetCode).to.eql("LOT-014");
+        pm.expect(result.observedVersion).to.eql(2);
+      });
+
+      pm.test("All 13 rules were evaluated and passed", function () {
+        pm.expect(result.checks).to.have.length(13);
+        result.checks.forEach(function (check) {
+          pm.expect(check.evaluated, check.ruleCode + " should be evaluated").to.eql(true);
+          pm.expect(check.passed, check.ruleCode + " should pass").to.eql(true);
+          pm.expect(check.errorCode).to.be.null;
+        });
+      });

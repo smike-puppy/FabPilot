@@ -1,6 +1,9 @@
 package com.fabpilot.mescore.diagnostic.service.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.fabpilot.mescore.alarm.enums.AlarmStatus;
+import com.fabpilot.mescore.alarm.mapper.EquipmentAlarmMapper;
+import com.fabpilot.mescore.alarm.model.EquipmentAlarm;
 import com.fabpilot.mescore.diagnostic.dto.LotDiagnosticContextTO;
 import com.fabpilot.mescore.diagnostic.exception.LotNotFoundException;
 import com.fabpilot.mescore.diagnostic.service.LotDiagnosticService;
@@ -18,6 +21,8 @@ import com.fabpilot.mescore.process.model.Operation;
 import com.fabpilot.mescore.process.model.RouteStep;
 import com.fabpilot.mescore.workorder.mapper.WorkOrderMapper;
 import com.fabpilot.mescore.workorder.model.WorkOrder;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,6 +60,9 @@ public class LotDiagnosticServiceImpl implements LotDiagnosticService {
 
     @Autowired
     private EquipmentHistoryMapper equipmentHistoryMapper;
+
+    @Autowired
+    private EquipmentAlarmMapper equipmentAlarmMapper;
 
     /**
      * 在同一只读事务中完成本次聚合，防止查询过程意外触发写入。
@@ -102,13 +110,27 @@ public class LotDiagnosticServiceImpl implements LotDiagnosticService {
                                 .last("LIMIT " + HISTORY_LIMIT));
 
         // 持久化模型不直接暴露给 API，避免表结构变化破坏外部响应契约。
+        // 诊断只关心尚未结束的异常。CLOSED 告警属于历史事实，继续返回会让 Agent
+        // 把已经处理完成的问题误判为当前阻塞原因。
+        List<EquipmentAlarm> activeAlarms = equipment == null
+                ? List.of()
+                : equipmentAlarmMapper.selectList(
+                        Wrappers.<EquipmentAlarm>lambdaQuery()
+                                .eq(EquipmentAlarm::getEquipmentId, equipment.getId())
+                                .in(
+                                        EquipmentAlarm::getStatus,
+                                        AlarmStatus.ACTIVE.databaseValue(),
+                                        AlarmStatus.ACKNOWLEDGED.databaseValue())
+                                .orderByDesc(EquipmentAlarm::getOpenedAt)
+                                .last("LIMIT " + HISTORY_LIMIT));
         return new LotDiagnosticContextTO(
                 toLotSnapshot(lot),
                 toWorkOrderSnapshot(workOrder),
                 toStepSnapshot(step, operation),
                 toEquipmentSnapshot(equipment),
                 transactions.stream().map(this::toLotHistoryItem).toList(),
-                equipmentEvents.stream().map(this::toEquipmentHistoryItem).toList());
+                equipmentEvents.stream().map(this::toEquipmentHistoryItem).toList(),
+                activeAlarms.stream().map(this::toAlarmSnapshot).toList());
     }
 
     private LotDiagnosticContextTO.LotSnapshot toLotSnapshot(Lot lot) {
@@ -167,4 +189,24 @@ public class LotDiagnosticServiceImpl implements LotDiagnosticService {
                 event.getPrimaryStatusAfter(), event.getOperatorId(),
                 event.getReasonCode(), event.getReasonText(), event.getOccurredAt());
     }
-}
+
+    /** 把告警持久化模型转换为稳定的诊断契约，并计算查询时刻的持续时间。 */
+    private LotDiagnosticContextTO.AlarmSnapshot toAlarmSnapshot(EquipmentAlarm alarm) {
+        long openDurationSeconds = alarm.getOpenedAt() == null
+                ? 0L
+                : Math.max(
+                        0L,
+                        Duration.between(alarm.getOpenedAt(), LocalDateTime.now()).getSeconds());
+        return new LotDiagnosticContextTO.AlarmSnapshot(
+                alarm.getId(),
+                alarm.getAlarmCode(),
+                alarm.getSeverity(),
+                alarm.getStatus(),
+                alarm.getSourceEventCode(),
+                alarm.getMessage(),
+                alarm.getOpenedAt(),
+                alarm.getAcknowledgedBy(),
+                alarm.getAcknowledgedAt(),
+                openDurationSeconds,
+                alarm.getVersion());
+    }}

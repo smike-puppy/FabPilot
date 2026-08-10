@@ -8,51 +8,114 @@ import com.fabpilot.mescore.lot.model.Lot;
 
 /**
  * Lot 状态机的命名业务规则。
- * 每个方法对应一个业务动作，避免在 Service 中重复拼接状态条件，同时保留清晰的规则含义。
+ *
+ * <p>正式命令通过 assert 方法拒绝非法状态，Validator 通过同名 boolean 方法展示每条规则，
+ * 从而保证执行与预检查只有一套业务依据。</p>
  */
 public final class LotStatePolicy {
     private LotStatePolicy() {
     }
 
+    public static boolean isCreatedForRelease(Lot lot) {
+        return isExecution(lot, LotExecutionStatus.CREATED);
+    }
+
+    public static boolean isReleasedForRelease(Lot lot) {
+        return isHold(lot, LotHoldStatus.RELEASED);
+    }
+
     public static void assertCanRelease(Lot lot) {
-        boolean allowed = isExecution(lot, LotExecutionStatus.CREATED)
-                && isHold(lot, LotHoldStatus.RELEASED);
-        assertAllowed(allowed, "Only CREATED and RELEASED Lot can be released");
+        assertAllowed(isCreatedForRelease(lot) && isReleasedForRelease(lot),
+                "Only CREATED and RELEASED Lot can be released");
+    }
+
+    public static boolean isReadyForTrackIn(Lot lot) {
+        return isExecution(lot, LotExecutionStatus.READY);
+    }
+
+    public static boolean isReleasedForTrackIn(Lot lot) {
+        return isHold(lot, LotHoldStatus.RELEASED);
+    }
+
+    public static boolean hasNoEquipmentForTrackIn(Lot lot) {
+        return lot.getCurrentEquipmentId() == null;
     }
 
     public static void assertCanTrackIn(Lot lot) {
-        boolean allowed = isExecution(lot, LotExecutionStatus.READY)
-                && isHold(lot, LotHoldStatus.RELEASED)
-                && lot.getCurrentEquipmentId() == null;
-        assertAllowed(allowed, "Only READY and RELEASED Lot without equipment can track in");
+        assertAllowed(isReadyForTrackIn(lot)
+                        && isReleasedForTrackIn(lot)
+                        && hasNoEquipmentForTrackIn(lot),
+                "Only READY and RELEASED Lot without equipment can track in");
+    }
+
+    public static boolean isRunningForTrackOut(Lot lot) {
+        return isExecution(lot, LotExecutionStatus.RUNNING);
+    }
+
+    public static boolean isReleasedForTrackOut(Lot lot) {
+        return isHold(lot, LotHoldStatus.RELEASED);
+    }
+
+    public static boolean hasStepForTrackOut(Lot lot) {
+        return lot.getCurrentRouteStepId() != null;
+    }
+
+    public static boolean hasEquipmentForTrackOut(Lot lot) {
+        return lot.getCurrentEquipmentId() != null;
     }
 
     public static void assertCanTrackOut(Lot lot) {
-        boolean allowed = isExecution(lot, LotExecutionStatus.RUNNING)
-                && isHold(lot, LotHoldStatus.RELEASED)
-                && lot.getCurrentRouteStepId() != null
-                && lot.getCurrentEquipmentId() != null;
-        assertAllowed(allowed, "Only RUNNING and RELEASED Lot with equipment can track out");
+        assertAllowed(isRunningForTrackOut(lot)
+                        && isReleasedForTrackOut(lot)
+                        && hasStepForTrackOut(lot)
+                        && hasEquipmentForTrackOut(lot),
+                "Only RUNNING and RELEASED Lot with equipment can track out");
+    }
+
+    public static boolean isActiveForHold(Lot lot) {
+        return isActiveExecution(lot);
+    }
+
+    public static boolean isReleasedForHold(Lot lot) {
+        return isHold(lot, LotHoldStatus.RELEASED);
+    }
+
+    public static boolean hasStepForHold(Lot lot) {
+        return lot.getCurrentRouteStepId() != null;
     }
 
     public static void assertCanHold(Lot lot) {
-        boolean allowed = isActiveExecution(lot)
-                && isHold(lot, LotHoldStatus.RELEASED)
-                && lot.getCurrentRouteStepId() != null;
-        assertAllowed(allowed, "Only READY or RUNNING and RELEASED Lot can be held");
+        assertAllowed(isActiveForHold(lot) && isReleasedForHold(lot) && hasStepForHold(lot),
+                "Only READY or RUNNING and RELEASED Lot can be held");
+    }
+
+    public static boolean isActiveForReleaseHold(Lot lot) {
+        return isActiveExecution(lot);
+    }
+
+    public static boolean isHeldForReleaseHold(Lot lot) {
+        return isHold(lot, LotHoldStatus.HELD);
+    }
+
+    public static boolean hasStepForReleaseHold(Lot lot) {
+        return lot.getCurrentRouteStepId() != null;
     }
 
     public static void assertCanReleaseHold(Lot lot) {
-        boolean allowed = isActiveExecution(lot)
-                && isHold(lot, LotHoldStatus.HELD)
-                && lot.getCurrentRouteStepId() != null;
-        assertAllowed(allowed, "Only READY or RUNNING and HELD Lot can release hold");
+        assertAllowed(isActiveForReleaseHold(lot)
+                        && isHeldForReleaseHold(lot)
+                        && hasStepForReleaseHold(lot),
+                "Only READY or RUNNING and HELD Lot can release hold");
+    }
+
+    public static boolean isNotTerminalForScrap(Lot lot) {
+        return !isExecution(lot, LotExecutionStatus.COMPLETED)
+                && !isExecution(lot, LotExecutionStatus.SCRAPPED);
     }
 
     public static void assertCanScrap(Lot lot) {
-        boolean terminal = isExecution(lot, LotExecutionStatus.COMPLETED)
-                || isExecution(lot, LotExecutionStatus.SCRAPPED);
-        assertAllowed(!terminal, "Completed or scrapped Lot cannot be scrapped");
+        assertAllowed(isNotTerminalForScrap(lot),
+                "Completed or scrapped Lot cannot be scrapped");
     }
 
     private static boolean isActiveExecution(Lot lot) {

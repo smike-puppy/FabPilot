@@ -1,19 +1,19 @@
 $kind: http-request
 name: POST Track Out Lot
 method: POST
-url: '{{app_base_url}}/api/lots/{{lot_track_out_code}}/track-out'
+url: 'http://localhost:8080/api/lots/LOT-016/track-out'
 description: 'Tracks LOT-016 out of ETCH-02 and advances it to the INSPECT step.'
 order: 5000
 headers:
   Content-Type: application/json
-  X-Trace-Id: '{{test_trace_prefix}}-LOT-016-TRACK-OUT-FIRST'
+  X-Trace-Id: 'POSTMAN-FABPILOT-LOT-016-TRACK-OUT-FIRST'
 body:
   type: json
   content: |-
     {
-      "expectedVersion": {{lot_track_out_expected_version}},
-      "idempotencyKey": "{{lot_track_out_idempotency_key}}",
-      "operatorId": "{{test_operator_id}}"
+      "expectedVersion": 1,
+      "idempotencyKey": "POSTMAN-LOT-016-TRACK-OUT-001",
+      "operatorId": "POSTMAN-USER"
     }
 scripts:
   - type: afterResponse
@@ -37,7 +37,7 @@ scripts:
       pm.test("Trace ID is returned", function () {
         const json = pm.response.json();
         pm.expect(json.traceId)
-          .to.eql("{{test_trace_prefix}}-LOT-016-TRACK-OUT-FIRST");
+          .to.eql("POSTMAN-FABPILOT-LOT-016-TRACK-OUT-FIRST");
         pm.expect(pm.response.headers.get("X-Trace-Id"))
-          .to.eql("{{test_trace_prefix}}-LOT-016-TRACK-OUT-FIRST");
+          .to.eql("POSTMAN-FABPILOT-LOT-016-TRACK-OUT-FIRST");
       });

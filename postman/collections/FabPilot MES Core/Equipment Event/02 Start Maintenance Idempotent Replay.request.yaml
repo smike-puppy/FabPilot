@@ -1,0 +1,32 @@
+$kind: http-request
+name: 02 Start Maintenance Idempotent Replay
+method: POST
+url: 'http://localhost:8080/api/equipment-events'
+description: '重复发送与 01 完全相同的命令；虽然 expectedVersion 仍为 0，也应按幂等历史返回当前版本 1。'
+order: 10000
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "equipmentCode": "EQP-STATE-TEST-01",
+      "eventCode": "START_MAINTENANCE",
+      "expectedVersion": 0,
+      "idempotencyKey": "POSTMAN-EQP-STATE-START-20260808-01",
+      "operatorId": "POSTMAN-USER",
+      "operatorType": "USER",
+      "reasonCode": "PLANNED_MAINTENANCE",
+      "reasonText": "专用测试设备开始维护"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("幂等重放不重复切换", function () {
+        pm.response.to.have.status(200);
+        const json = pm.response.json();
+        pm.expect(json.data.primaryStatus).to.eql("MAINTENANCE");
+        pm.expect(json.data.version).to.eql(1);
+        pm.expect(json.data.idempotent).to.eql(true);
+      });

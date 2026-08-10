@@ -1,0 +1,40 @@
+$kind: http-request
+name: '05 Validate Track In - Missing Equipment Code'
+method: POST
+url: 'http://localhost:8080/api/command-validations'
+description: '业务字段预检查：未提供 equipmentCode 时接口正常返回结构化规则结果，EQUIPMENT_CODE_PROVIDED 失败且不查询设备。'
+order: 13400
+headers:
+  Content-Type: application/json
+  X-Trace-Id: 'POSTMAN-VALIDATE-TRACK-IN-MISSING-EQUIPMENT-001'
+body:
+  type: json
+  content: |-
+    {
+      "commandType": "TRACK_IN",
+      "targetType": "LOT",
+      "targetCode": "LOT-014",
+      "expectedVersion": 2
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const json = pm.response.json();
+      const result = json.data;
+      const equipmentCodeCheck = result.checks.find(function (check) {
+        return check.ruleCode === "EQUIPMENT_CODE_PROVIDED";
+      });
+
+      pm.test("Missing equipmentCode returns a structured rejection", function () {
+        pm.response.to.have.status(200);
+        pm.expect(json.success).to.eql(true);
+        pm.expect(result.allowed).to.eql(false);
+        pm.expect(result.checks).to.have.length(13);
+      });
+
+      pm.test("EQUIPMENT_CODE_PROVIDED explains the missing field", function () {
+        pm.expect(equipmentCodeCheck.evaluated).to.eql(true);
+        pm.expect(equipmentCodeCheck.passed).to.eql(false);
+        pm.expect(equipmentCodeCheck.errorCode).to.eql("EQUIPMENT_NOT_FOUND");
+      });

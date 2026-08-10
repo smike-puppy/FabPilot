@@ -1,0 +1,41 @@
+$kind: http-request
+name: 'EXECUTE_EQUIPMENT_EVENT Allow Track In Event'
+method: POST
+url: 'http://localhost:8080/api/command-validations'
+description: 'EQP-STATE-TEST-01 为 U+IDLE/version 2，TRACK_IN 事件来源状态匹配。'
+order: 14000
+headers:
+  Content-Type: application/json
+  X-Trace-Id: 'POSTMAN-VALIDATE-EQUIPMENT-EVENT-001'
+body:
+  type: json
+  content: |-
+    {
+      "commandType": "EXECUTE_EQUIPMENT_EVENT",
+      "targetType": "EQUIPMENT",
+      "targetCode": "EQP-STATE-TEST-01",
+      "expectedVersion": 2,
+      "eventCode": "TRACK_IN"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const json = pm.response.json();
+      const result = json.data;
+      const requiredCheck = result.checks.find(function (check) {
+        return check.ruleCode === "EVENT_PRIMARY_SOURCE_MATCH";
+      });
+
+      pm.test("Command validation returns a structured result", function () {
+        pm.response.to.have.status(200);
+        pm.expect(json.success).to.eql(true);
+        pm.expect(result.commandType).to.eql("EXECUTE_EQUIPMENT_EVENT");
+        pm.expect(result.allowed).to.eql(true);
+        pm.expect(result.checks).to.be.an("array").that.is.not.empty;
+      });
+
+      pm.test("Expected business rule is present", function () {
+        pm.expect(requiredCheck).to.be.an("object");
+        pm.expect(requiredCheck.evaluated).to.eql(true);
+      });

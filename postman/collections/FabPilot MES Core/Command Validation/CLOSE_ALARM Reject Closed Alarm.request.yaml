@@ -1,0 +1,41 @@
+$kind: http-request
+name: 'CLOSE_ALARM Reject Closed Alarm'
+method: POST
+url: 'http://localhost:8080/api/command-validations'
+description: '告警 1 已 CLOSED，不能再次 CLOSE；关联设备已恢复但告警状态规则应失败。'
+order: 14200
+headers:
+  Content-Type: application/json
+  X-Trace-Id: 'POSTMAN-VALIDATE-CLOSE-ALARM-001'
+body:
+  type: json
+  content: |-
+    {
+      "commandType": "CLOSE_ALARM",
+      "targetType": "ALARM",
+      "targetCode": "1",
+      "expectedVersion": 2,
+      "alarmId": 1
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const json = pm.response.json();
+      const result = json.data;
+      const requiredCheck = result.checks.find(function (check) {
+        return check.ruleCode === "ALARM_STATUS_ALLOWED";
+      });
+
+      pm.test("Command validation returns a structured result", function () {
+        pm.response.to.have.status(200);
+        pm.expect(json.success).to.eql(true);
+        pm.expect(result.commandType).to.eql("CLOSE_ALARM");
+        pm.expect(result.allowed).to.eql(false);
+        pm.expect(result.checks).to.be.an("array").that.is.not.empty;
+      });
+
+      pm.test("Expected business rule is present", function () {
+        pm.expect(requiredCheck).to.be.an("object");
+        pm.expect(requiredCheck.evaluated).to.eql(true);
+      });

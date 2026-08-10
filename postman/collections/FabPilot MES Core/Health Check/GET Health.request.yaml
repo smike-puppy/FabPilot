@@ -1,7 +1,7 @@
 $kind: http-request
 name: GET Health
 method: GET
-url: '{{app_base_url}}/api/health'
+url: 'http://localhost:8080/api/health'
 description: Verifies the MES Core service is up and running.
 order: 1000
 scripts:

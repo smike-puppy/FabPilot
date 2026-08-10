@@ -54,6 +54,8 @@ public class EquipmentHistory {
     public void setOperatorType(String operatorType) { this.operatorType = operatorType; }
     public void setOperatorId(String operatorId) { this.operatorId = operatorId; }
     public void setOperatorRole(String operatorRole) { this.operatorRole = operatorRole; }
+    public void setReasonCode(String reasonCode) { this.reasonCode = reasonCode; }
+    public void setReasonText(String reasonText) { this.reasonText = reasonText; }
     public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
     public void setEquipmentVersionBefore(Long value) { this.equipmentVersionBefore = value; }
     public void setEquipmentVersionAfter(Long value) { this.equipmentVersionAfter = value; }

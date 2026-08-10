@@ -1,0 +1,16 @@
+$kind: http-request
+name: 03 Reject Close Before Recovery
+method: POST
+url: 'http://localhost:8080/api/equipment-alarms/actions'
+order: 15000
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {"alarmId":1,"action":"CLOSE","expectedVersion":1,"idempotencyKey":"POSTMAN-ALARM-CLOSE-EARLY-001","operatorId":"ENG-001"}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("DOWN equipment prevents close",()=>{pm.response.to.have.status(409);pm.expect(pm.response.json().code).to.eql("EQUIPMENT_NOT_RECOVERED");});

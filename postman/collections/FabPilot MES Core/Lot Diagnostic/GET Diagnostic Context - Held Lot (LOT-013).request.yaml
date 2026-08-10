@@ -1,7 +1,7 @@
 $kind: http-request
 name: 'GET Diagnostic Context - Held Lot (LOT-013)'
 method: GET
-url: '{{app_base_url}}/api/lots/{{lot_query_held_code}}/diagnostic-context'
+url: 'http://localhost:8080/api/lots/LOT-013/diagnostic-context'
 description: 'Happy path: retrieves LOT-013 diagnostic context for the RUNNING and HELD alarm scenario.'
 order: 1000
 scripts:
@@ -22,7 +22,7 @@ scripts:
       pm.test("Response contains the diagnostic data envelope", function () {
         pm.expect(json.success).to.eql(true);
         pm.expect(json.code).to.eql("SUCCESS");
-        pm.expect(diagnostic, "Expected response.data; verify the selected environment and Lot variable")
+        pm.expect(diagnostic, "Expected response.data for the fixed LOT-013 request")
           .to.be.an("object");
         pm.expect(diagnostic && diagnostic.lot, "Expected response.data.lot")
           .to.be.an("object");

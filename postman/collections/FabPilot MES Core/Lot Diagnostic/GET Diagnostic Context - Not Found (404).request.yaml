@@ -1,7 +1,7 @@
 $kind: http-request
 name: 'GET Diagnostic Context - Not Found (404)'
 method: GET
-url: '{{app_base_url}}/api/lots/{{lot_query_not_found_code}}/diagnostic-context'
+url: 'http://localhost:8080/api/lots/LOT-NONEXISTENT/diagnostic-context'
 description: 'Negative test: verifies unified LOT_NOT_FOUND response when lot does not exist.'
 order: 3000
 scripts:

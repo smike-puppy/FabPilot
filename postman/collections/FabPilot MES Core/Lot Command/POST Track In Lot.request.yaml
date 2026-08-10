@@ -1,20 +1,20 @@
 $kind: http-request
 name: POST Track In Lot
 method: POST
-url: '{{app_base_url}}/api/lots/{{lot_track_in_code}}/track-in'
+url: 'http://localhost:8080/api/lots/LOT-016/track-in'
 description: 'Tracks LOT-016 into an available, capable ETCH-02 equipment.'
 order: 3000
 headers:
   Content-Type: application/json
-  X-Trace-Id: '{{test_trace_prefix}}-LOT-016-TRACK-IN-FIRST'
+  X-Trace-Id: 'POSTMAN-FABPILOT-LOT-016-TRACK-IN-FIRST'
 body:
   type: json
   content: |-
     {
-      "expectedVersion": {{lot_track_in_expected_version}},
-      "idempotencyKey": "{{lot_track_in_idempotency_key}}",
-      "operatorId": "{{test_operator_id}}",
-      "equipmentCode": "{{lot_track_in_equipment_code}}"
+      "expectedVersion": 0,
+      "idempotencyKey": "VERIFY-LOT-016-TRACK-IN-001",
+      "operatorId": "POSTMAN-USER",
+      "equipmentCode": "ETCH-02"
     }
 scripts:
   - type: afterResponse
@@ -38,7 +38,7 @@ scripts:
       pm.test("Trace ID is returned", function () {
         const json = pm.response.json();
         pm.expect(json.traceId)
-          .to.eql("{{test_trace_prefix}}-LOT-016-TRACK-IN-FIRST");
+          .to.eql("POSTMAN-FABPILOT-LOT-016-TRACK-IN-FIRST");
         pm.expect(pm.response.headers.get("X-Trace-Id"))
-          .to.eql("{{test_trace_prefix}}-LOT-016-TRACK-IN-FIRST");
+          .to.eql("POSTMAN-FABPILOT-LOT-016-TRACK-IN-FIRST");
       });

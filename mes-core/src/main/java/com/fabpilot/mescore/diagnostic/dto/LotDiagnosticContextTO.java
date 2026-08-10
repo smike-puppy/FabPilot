@@ -22,6 +22,7 @@ public class LotDiagnosticContextTO {
     private EquipmentSnapshot currentEquipment;
     private List<LotHistoryItem> recentLotTransactions;
     private List<EquipmentHistoryItem> recentEquipmentEvents;
+    private List<AlarmSnapshot> activeAlarms;
 
     /** Lot 当前状态快照。 */
     @Data
@@ -107,4 +108,25 @@ public class LotDiagnosticContextTO {
         private String reasonText;
         private LocalDateTime occurredAt;
     }
-}
+
+    /**
+     * 当前设备尚未关闭的告警快照。
+     *
+     * <p>持续时间由查询时刻减去开启时间得到，帮助 Agent 判断异常是否已经长时间未处理。</p>
+     */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AlarmSnapshot {
+        private Long id;
+        private String alarmCode;
+        private String severity;
+        private String status;
+        private String sourceEventCode;
+        private String message;
+        private LocalDateTime openedAt;
+        private String acknowledgedBy;
+        private LocalDateTime acknowledgedAt;
+        private long openDurationSeconds;
+        private Long version;
+    }}

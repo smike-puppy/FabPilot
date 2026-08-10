@@ -1,0 +1,41 @@
+$kind: http-request
+name: 'ACKNOWLEDGE_ALARM Reject Closed Alarm'
+method: POST
+url: 'http://localhost:8080/api/command-validations'
+description: '告警 1 已 CLOSED，不能再次 ACKNOWLEDGE；预检查应结构化拒绝。'
+order: 14100
+headers:
+  Content-Type: application/json
+  X-Trace-Id: 'POSTMAN-VALIDATE-ACK-ALARM-001'
+body:
+  type: json
+  content: |-
+    {
+      "commandType": "ACKNOWLEDGE_ALARM",
+      "targetType": "ALARM",
+      "targetCode": "1",
+      "expectedVersion": 2,
+      "alarmId": 1
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const json = pm.response.json();
+      const result = json.data;
+      const requiredCheck = result.checks.find(function (check) {
+        return check.ruleCode === "ALARM_STATUS_ALLOWED";
+      });
+
+      pm.test("Command validation returns a structured result", function () {
+        pm.response.to.have.status(200);
+        pm.expect(json.success).to.eql(true);
+        pm.expect(result.commandType).to.eql("ACKNOWLEDGE_ALARM");
+        pm.expect(result.allowed).to.eql(false);
+        pm.expect(result.checks).to.be.an("array").that.is.not.empty;
+      });
+
+      pm.test("Expected business rule is present", function () {
+        pm.expect(requiredCheck).to.be.an("object");
+        pm.expect(requiredCheck.evaluated).to.eql(true);
+      });

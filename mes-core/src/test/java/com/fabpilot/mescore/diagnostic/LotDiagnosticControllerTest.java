@@ -35,7 +35,7 @@ class LotDiagnosticControllerTest {
                         "LOT-013", 20, "RUNNING", "HELD", "HOLD", null, 4L),
                 new LotDiagnosticContextTO.WorkOrderSnapshot(
                         "WO-2026-008", "IN_PROGRESS", 100, null),
-                null, null, List.of(), List.of());
+                null, null, List.of(), List.of(), List.of());
         when(lotDiagnosticService.getDiagnosticContext("LOT-013"))
                 .thenReturn(context);
         when(traceIdProvider.currentTraceId()).thenReturn("TRACE-TEST");

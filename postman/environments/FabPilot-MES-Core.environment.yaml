@@ -134,7 +134,13 @@ values:
     enabled: true
     type: default
 
-  # 09 - Shared test identity and tracing
+  # 09 - Equipment state transition scenario
+  # Dedicated test device is seeded as D + DOWN, version 0, with no Lot binding.
+  - key: equipment_event_code
+    value: EQP-STATE-TEST-01
+    enabled: true
+    type: default
+  # 10 - Shared test identity and tracing
   - key: test_operator_id
     value: POSTMAN-USER
     enabled: true

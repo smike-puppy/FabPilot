@@ -1,0 +1,42 @@
+$kind: http-request
+name: 'RELEASE_HOLD Allow Held Lot'
+method: POST
+url: 'http://localhost:8080/api/command-validations'
+description: 'LOT-013 为 RUNNING+HELD 且当前 Step 有效，Release Hold 预检查应允许。'
+order: 13800
+headers:
+  Content-Type: application/json
+  X-Trace-Id: 'POSTMAN-VALIDATE-RELEASE-HOLD-001'
+body:
+  type: json
+  content: |-
+    {
+      "commandType": "RELEASE_HOLD",
+      "targetType": "LOT",
+      "targetCode": "LOT-013",
+      "expectedVersion": 4,
+      "reasonCode": "CHECK_COMPLETE",
+      "reasonText": "只读验证解除暂停规则"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const json = pm.response.json();
+      const result = json.data;
+      const requiredCheck = result.checks.find(function (check) {
+        return check.ruleCode === "LOT_HELD";
+      });
+
+      pm.test("Command validation returns a structured result", function () {
+        pm.response.to.have.status(200);
+        pm.expect(json.success).to.eql(true);
+        pm.expect(result.commandType).to.eql("RELEASE_HOLD");
+        pm.expect(result.allowed).to.eql(true);
+        pm.expect(result.checks).to.be.an("array").that.is.not.empty;
+      });
+
+      pm.test("Expected business rule is present", function () {
+        pm.expect(requiredCheck).to.be.an("object");
+        pm.expect(requiredCheck.evaluated).to.eql(true);
+      });

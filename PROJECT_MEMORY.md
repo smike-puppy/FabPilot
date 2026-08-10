@@ -275,3 +275,127 @@
 - 变更文件：`LotCommandServiceImpl.java`、`LotStatePolicy.java`、`LotTransactionFactory.java`、`LotTransactionRecordTO.java`、`EquipmentHistoryFactory.java`、`EquipmentHistoryRecordTO.java`、`LotCommandTestFixture.java` 及三个对应专项测试文件。
 - 下一步：用户可按照现有人工测试文档自行执行 HTTP 测试并核对请求前后的表状态；代码主线可进入设备事件写侧服务。
 - 阻塞项：无。
+### 2026-08-08：完成设备故障事件写侧
+
+- 业务场景：设备在加工中发生 `VACUUM_LOW` 等故障，MES 根据受控事件定义将设备从 `U + PROC` 更新为 `D + DOWN`，并追加不可变 EquipmentHistory；本接口不自动修改或 Hold 设备上绑定的 Lot。
+- 新增 `POST /api/equipment-events/faults`。设备编号和事件编号统一放在请求体中，避免路径参数与业务参数分散。
+- 请求包含 `equipmentCode`、`eventCode`、`expectedVersion`、`idempotencyKey`、`operatorId`、`reasonCode` 和 `reasonText`。
+- 服务先检查幂等历史，再校验设备版本、ACTIVE 事件定义、故障目标状态和事件来源状态；相同设备、事件及原因的同键重放直接返回，不重复更新和写历史。
+- 设备快照使用设备 ID、原版本、原 U/D 状态和原主状态作为条件更新；快照更新与 EquipmentHistory 插入在同一事务内，失败整体回滚。
+- 故障事件只允许目标为 `D + DOWN`，不能通过该接口执行 Track In、Track Out、开始维修或完成维修。
+- 扩展 EquipmentHistory 公共工厂，使其能够记录 U/D 状态变化、操作来源、业务角色和原因；保留 Lot 命令原有 `USER + MANUFACTURING` 默认语义。
+- 新增 Service 5 个专项测试、Controller 2 个测试；连同公共履历工厂测试，设备故障专项测试 8/8 通过。
+- 验证结果：JDK 21 完整 `mvn test` 共 58 个测试，失败 0、错误 0、跳过 0；`git diff --check` 通过。
+- 新增 `docs/EQUIPMENT_FAULT_MANUAL_TEST.md`，说明业务流程、校验理由、请求前表状态和请求后预期状态。
+- 按用户要求未执行 Postman/HTTP 请求，未启动服务，也未读取或写入业务数据库。
+- 下一步：实现 Alarm 实体及告警生命周期，让设备故障事件关联一条可确认、可关闭的告警记录；随后实现维修单和 Agent 处置建议。
+- 阻塞项：无。
+### 2026-08-08：补充设备故障 Postman 测试集
+
+- 在 `postman/collections/FabPilot MES Core/Equipment Event` 新增 8 个设备故障请求，按 `order=9000~16000` 排列，可按顺序覆盖完整测试流程。
+- 测试场景包括：必填参数为空、设备版本过期、未知事件、非故障事件、首次故障成功、幂等重放、同键修改原因冲突、设备已 DOWN 后再次发起新故障。
+- 每个请求包含 2 条 `afterResponse` 断言，共 16 条，校验 HTTP 状态、统一响应 code 和关键业务结果。
+- 首次成功用例会把响应版本写入 `equipment_fault_result_version`，供最后一个“已 DOWN 状态不允许再次执行 U/PROC→D/DOWN”用例使用。
+- Postman 环境新增设备编号、事件、初始版本、结果版本、幂等键、上报来源和原因等 13 个设备故障变量。
+- 执行顺序要求：前四个失败用例不改数据；第五个成功用例要求目标设备测试前为 `U + PROC` 且主幂等键未使用；后续三个用例依赖第五个结果。
+- 数据准备不允许直接 UPDATE 设备快照；若目标设备不是 `U + PROC`，应先通过正常 Track In 业务准备，或选择符合条件的设备。当前未发现需要额外 INSERT 的独立测试数据。
+- 静态验证：8 个请求文件存在，16 条 Postman 断言存在，15 个变量引用均能在环境中找到定义，`git diff --check` 通过。
+- 本次按用户要求只添加静态请求和测试脚本，未执行 Postman、未发送 HTTP 请求、未读写业务数据库。
+- 下一步：用户按顺序运行 Equipment Event 文件夹并根据 `docs/EQUIPMENT_FAULT_MANUAL_TEST.md` 核对 equipment 与 equipment_history。
+- 阻塞项：本地运行时没有 YAML 解析模块，因此未做第三方 YAML parser 校验；文件结构严格复用现有 Postman YAML 格式。
+
+## 2026-08-08 设备事件通用状态切换更正
+
+- 更正范围：此前的 `/api/equipment-events/faults` 故障专用实现与测试已被本节取代。
+- 完成业务：改为 `POST /api/equipment-events`，按 ACTIVE `equipment_event_definition` 执行任意合法状态转换；支持 `USER/SYSTEM` 操作者来源、按定义校验原因、乐观锁、幂等和同事务历史审计。
+- 专用数据：创建 `EQP-STATE-TEST-01`，当前已核验为 `D/DOWN v0`、无 Lot 绑定、无设备历史；V7 迁移保证环境重建后也能获得该测试设备。
+- Postman：替换为开始维护、幂等重放、完成维护、非法来源状态四个请求；未执行请求。
+- 变更文件：设备事件 Controller/Service/DTO/错误码/测试，`V7__seed_equipment_event_test_device.sql`，Postman Equipment Event 目录及环境，`docs/EQUIPMENT_EVENT_MANUAL_TEST.md`。
+- 验证：JDK 21 执行 `mvn test` 成功，58 个测试全部通过（0 failures / 0 errors / 0 skipped）；未执行 Postman 请求。
+- 下一步：用户按文档顺序手工发送 Postman，并核对最终设备快照和两条历史。
+## 2026-08-08 Postman 请求取消 Environment 变量
+
+- 按用户要求，将 `postman/collections` 下 21 个现有 YAML 请求中的全部 `{{...}}` 替换为请求内直接可见的固定值。
+- 固定内容包括 `http://localhost:8080`、Lot/设备编码、版本、幂等键、操作人、原因和 Trace ID；响应断言中的占位符也已同步替换。
+- Equipment Event 请求直接使用专用设备 `EQP-STATE-TEST-01`；现有 Environment 文件保留作历史配置，但所有请求均不再依赖它。
+- 验证：collection 内 `{{...}}` 剩余 0 处，`pm.environment` 调用剩余 0 处；未执行任何 Postman 请求。
+## 2026-08-08 告警生命周期第一步：故障自动建告警
+
+- 业务场景：设备事件目标为 `D + DOWN` 时，除更新设备快照和追加 EquipmentHistory 外，同事务创建一条 `ACTIVE` 设备告警；维护开始/完成等非故障事件不创建告警。
+- 新增 V8 `equipment_alarm` 表，状态预留 `ACTIVE -> ACKNOWLEDGED -> CLOSED`，包含严重度、来源事件、来源幂等键、消息、确认/关闭人员与时间、版本字段。
+- 告警的 `source_idempotency_key` 唯一，并复用设备事件幂等键；相同事件重放在进入写流程前返回，因此不会重复建告警，数据库唯一约束作为并发下的最后保护。
+- 告警创建失败会使设备快照和 EquipmentHistory 一并回滚，避免设备已 Down 但没有对应告警。
+- 新增文件：`V8__create_equipment_alarm.sql`、`EquipmentAlarm.java`、`EquipmentAlarmMapper.java`；修改 `EquipmentEventServiceImpl` 和对应单元测试。
+- 验证：设备事件定向测试通过；JDK 21 全量 `mvn test` 共 58 个测试，0 failures / 0 errors / 0 skipped；未执行 Postman/HTTP，未改变测试设备数据。
+- 下一步：实现告警确认与关闭命令、告警动作历史；关闭前要求设备已经通过维修完成恢复为 `U + IDLE`。
+- 阻塞项：无。
+## 2026-08-08 告警确认与关闭闭环
+
+- 新增 `POST /api/equipment-alarms/actions`：请求体使用 `alarmId`、`action`（`ACKNOWLEDGE`/`CLOSE`）、`expectedVersion`、`idempotencyKey` 和 `operatorId`，不依赖路径状态或隐式上下文。
+- 状态规则：仅 `ACTIVE` 可确认；仅 `ACKNOWLEDGED` 可关闭；关闭前重新读取设备并要求为 `U + IDLE`，避免设备仍停机时提前结束异常。
+- 新增 V9 `equipment_alarm_action_history`，每个确认/关闭动作记录操作者、幂等键、前后版本和发生时间；相同幂等键返回当前结果，复用不同动作/告警则拒绝。
+- 告警快照条件更新同时比较 id、version、当前状态；更新和动作历史追加同事务，处理并发冲突时不留下半条审计记录。
+- 验证：JDK 21 执行 `mvn test` 成功；未执行 Postman/HTTP，未写入业务测试数据。
+- 下一步：为告警确认/关闭补充专用测试设备数据、Postman 请求与手工测试文档，并把 ACTIVE 告警纳入诊断上下文。
+## 2026-08-10 告警测试闭环与代码可读性完善
+
+- 重写 EquipmentAlarmServiceImpl 为可读的分步骤业务编排，补充确认/关闭规则、幂等顺序、版本校验、设备恢复依据、条件更新和事务回滚原因的中文注释。
+- 修正幂等意图：同一幂等键除 alarmId 和 action 外，operatorId 也必须一致；不同操作人复用同一键返回 IDEMPOTENCY_CONFLICT。
+- 提取稳定 AlarmCommandErrorCode，不再使用运行时匿名错误码。
+- 新增 6 个告警 Service 专项测试，覆盖确认成功、设备未恢复拒绝关闭、恢复后关闭、幂等重放、不同操作人冲突和并发更新失败不写历史。
+- 真实数据库检查发现旧状态测试设备已经是 U/IDLE v2，因此保留其结果，另建 EQP-ALARM-TEST-01 和 ACTIVE 告警；未重置或删除既有测试历史。
+- 新增 V10 可重复种子迁移、docs/EQUIPMENT_ALARM_MANUAL_TEST.md 和 6 个固定值 Postman 请求；请求不使用 Environment，未执行 Postman/HTTP。
+- 数据前置状态已确认：设备 ID 6 为 D/DOWN v0，告警 ID 1 为 ACTIVE v0。
+- 验证：JDK 21 全量 mvn test 成功，共 64 个测试；git diff --check 通过。
+- 下一步：把未关闭告警加入 Lot/Equipment 诊断上下文，使 Agent 能直接看见告警状态、严重度和持续时间。
+## 2026-08-10 告警模块代码规则纠偏
+
+- 重新读取并核对 PROJECT_MEMORY、DECISIONS、项目交接文档和 MES 后端开发规范；确认此前告警模块存在压缩语句、通配符导入、状态字符串散落和业务依据注释不足等问题，之前“可读性完善”的表述由本条记录纠正。
+- 新增 AlarmAction、AlarmStatus，将 ACTIVE -> ACKNOWLEDGED -> CLOSED 的来源状态和目标状态集中定义，避免服务层重复硬编码状态字符串。
+- 重写 EquipmentAlarmServiceImpl 的业务编排：幂等识别、版本校验、状态机校验、关闭前设备 U + IDLE 校验、条件更新和同事务审计均分步表达，并补充“做什么、为什么”的中文注释。
+- 整理 EquipmentAlarmController、AlarmActionRequestTO、EquipmentAlarmActionHistory 的导入、缩进、字段说明和单语句换行，控制器继续只负责参数校验与统一响应包装。
+- 变更文件：alarm/enums/AlarmAction.java、AlarmStatus.java，alarm/service/impl/EquipmentAlarmServiceImpl.java，alarm/controller/EquipmentAlarmController.java，alarm/dto/AlarmActionRequestTO.java，alarm/model/EquipmentAlarmActionHistory.java。
+- 验证结果：Maven 回归已发起，但 Windows 沙箱 helper_unknown_error 和审批自动审查超时导致命令未真正完成，不能宣称测试通过；未执行 Postman/HTTP 请求，也未修改业务数据库。
+- 下一步：执行 mvn test 与 git diff --check，并继续扫描告警模块其余 DTO、异常、Mapper 和测试文件的同类格式问题。
+- 阻塞项：当前本地命令执行通道间歇性失败，不是用户业务授权不足。
+## 2026-08-10 Lot 诊断告警聚合收尾与通用失败诊断设计
+
+- Lot 诊断上下文新增 `activeAlarms`：只查询当前设备的 `ACTIVE`、`ACKNOWLEDGED` 告警，排除 `CLOSED`，按开启时间倒序最多10条。
+- 返回告警码、严重度、状态、来源事件、消息、开启/确认信息、持续秒数和版本；整个接口保持只读。
+- 新增 `docs/LOT_DIAGNOSTIC_ALARM_MANUAL_TEST.md`，规定请求前后 Lot、Equipment、Alarm 和相关履历必须不变。
+- 修复纯 Mockito 测试的 EquipmentAlarm Lambda 元数据初始化，并新增当前设备未关闭告警测试。
+- 验证：JDK 21 专项测试5个通过；全量 `mvn test` 共65个通过，0失败、0错误、0跳过；未执行 Postman，未访问或修改业务数据库。
+- 新增 `docs/COMMAND_VALIDATION_AND_FAILURE_DESIGN.md` 和 ADR-004，确定只读预检查、脱敏失败现场、Policy复用、独立失败记录事务及Agent/页面接入方式。
+- 下一步：定义 CommandType 和规则结果 TO；以 Track In 为首个 Validator；随后实现失败记录表、独立记录组件和 Trace ID 查询。
+- 阻塞项：无。
+## 2026-08-10：Track In `validate_command` 第一阶段完成
+
+- 新增只读接口 `POST /api/command-validations`，第一阶段支持 `TRACK_IN + LOT`，请求使用强类型 TO，不使用任意 Map。
+- Track In 预检查一次返回 11 项规则：Lot 存在、版本、READY、RELEASED、未绑定设备、当前 Step、设备存在、U、IDLE、能力组匹配、未被 Lot 占用；前置对象缺失时依赖规则返回 `evaluated=false`。
+- 新增 `CommandValidator` 注册/路由结构和 `TrackInCommandValidator`；公共层只负责按 commandType 路由，Track In 具体规则仍归 Lot/Equipment 领域。
+- 将 Lot Track In 状态拆成可复用命名规则，并新增 `TrackInPolicy`。正式 Track In 与预检查共用相同 Policy，避免两套 if/else 漂移。
+- 新增 Controller 与 Validator 自动化测试，覆盖全部通过、一次返回多项失败、依赖规则未执行、HTTP 成功封装和缺少设备编码的 400 校验。
+- 新增 `docs/TRACK_IN_COMMAND_VALIDATION_MANUAL_TEST.md`，包含中文业务流程、每项校验理由、测试前 SQL、固定请求和发送后数据库必须完全不变的验收标准。
+- 验证结果：JDK 21 专项测试 5 个通过；JDK 21 全量 `mvn test` 共 70 个通过，0 failures / 0 errors / 0 skipped。
+- 本阶段未执行 Postman/HTTP 请求，未连接或修改业务数据库，也未新增命令失败记录表。
+- 下一步：由用户按手工文档验证只读接口；随后将同一 Validator/Policy 模式接入 Track Out，再逐项覆盖 Hold、Release Hold、Scrap、设备事件和告警动作。结构化 `command_failure_record` 在预检查稳定后另行实现。
+## 2026-08-10：补齐 Track In validate_command Postman 测试集
+
+- 新增 `postman/collections/FabPilot MES Core/Command Validation`，包含 5 个固定参数请求：允许执行、版本过期、Lot 不存在、设备不存在、缺少 equipmentCode。
+- 所有请求直接使用 `http://localhost:8080`、固定 Lot/设备/版本和 Trace ID，不包含 `{{environmentVariable}}`。
+- 每个请求都包含 afterResponse 自动断言，覆盖 HTTP envelope、allowed、observedVersion、11 项规则、稳定错误码、evaluated=false 依赖规则和 400 入参错误。
+- 写入用例前只读核对本地 MySQL：LOT-016 已为 SCRAPPED/version 5，不再适合作为成功前置；当前及重建后的稳定种子组合为 LOT-014/version 2 + ETCH-02/U/IDLE，能力组匹配且设备未占用，因此 Postman 与手工文档改用该组合。
+- 未执行任何 Postman/HTTP 请求，未修改业务数据库。
+## 2026-08-10：一次性补齐其余命令 Validator
+
+- 将只读 `POST /api/command-validations` 从仅支持 Track In 扩展为 9 类命令：RELEASE、TRACK_IN、TRACK_OUT、HOLD、RELEASE_HOLD、SCRAP、EXECUTE_EQUIPMENT_EVENT、ACKNOWLEDGE_ALARM、CLOSE_ALARM；目标类型覆盖 LOT、EQUIPMENT、ALARM。
+- 新增 Lot、设备事件、告警动作 Validator，并通过抽象基类和 `CommandCheckFactory` 复用对象读取、依赖规则未执行结果和检查结果构造；公共模块只处理通用编排，具体业务规则仍保留在对应领域 Policy 中。
+- 提取并复用 `LotStatePolicy`、`LotRoutePolicy`、`TrackOutPolicy`、`EquipmentEventPolicy`、`AlarmActionPolicy`。正式命令执行和预检查使用同一套状态、路线、事件定义及告警状态机判断，避免 Validator 与执行服务各写一套规则后逐渐不一致。
+- 按既定编码规范补充中文业务注释，说明每一步检查“检查什么、为什么检查”；没有使用通配符导入、压缩式多语句或隐式 Map 请求。
+- 新增 `RemainingCommandValidatorTest`，并同步调整 Track In Validator 与 Controller 测试；JDK 21 全量 `mvn test` 成功，共 79 个测试，0 failures、0 errors、0 skipped。
+- 新增 `docs/ALL_COMMAND_VALIDATION_MANUAL_TEST.md`，按 9 类命令说明业务流程、规则依据、测试前 SQL 和发送后数据库必须保持不变的验收方式。
+- Command Validation Postman 目录现有 13 个固定值请求：原 5 个 Track In 用例已适配 13 项规则，新增其余 8 类命令用例；全部直接写明 URL 和参数，不使用 `{{...}}`。
+- 编写用例前只读核对本地 MySQL 的 Lot、设备、事件定义和告警状态；未修正、插入或更新任何业务数据。未执行 Postman/HTTP 请求。
+- 静态检查：13 个 Postman 请求体均可解析为 JSON，目录不存在环境变量占位符；`git diff --check` 通过。
+- 下一步：用户按照手工文档执行 13 个 Postman 用例并反馈结果；确认 Validator 行为后，再实现 `command_failure_record` 的独立事务记录和 Trace ID 查询，不让只读预检查产生业务写入。
+- 阻塞项：无。

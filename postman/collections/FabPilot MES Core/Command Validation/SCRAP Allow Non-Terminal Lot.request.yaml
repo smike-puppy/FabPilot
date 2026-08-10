@@ -1,0 +1,42 @@
+$kind: http-request
+name: 'SCRAP Allow Non-Terminal Lot'
+method: POST
+url: 'http://localhost:8080/api/command-validations'
+description: 'LOT-014 尚未进入终态且引用完整，Scrap 预检查应允许。'
+order: 13900
+headers:
+  Content-Type: application/json
+  X-Trace-Id: 'POSTMAN-VALIDATE-SCRAP-001'
+body:
+  type: json
+  content: |-
+    {
+      "commandType": "SCRAP",
+      "targetType": "LOT",
+      "targetCode": "LOT-014",
+      "expectedVersion": 2,
+      "reasonCode": "TEST_SCRAP",
+      "reasonText": "只读验证报废规则"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const json = pm.response.json();
+      const result = json.data;
+      const requiredCheck = result.checks.find(function (check) {
+        return check.ruleCode === "LOT_NOT_TERMINAL";
+      });
+
+      pm.test("Command validation returns a structured result", function () {
+        pm.response.to.have.status(200);
+        pm.expect(json.success).to.eql(true);
+        pm.expect(result.commandType).to.eql("SCRAP");
+        pm.expect(result.allowed).to.eql(true);
+        pm.expect(result.checks).to.be.an("array").that.is.not.empty;
+      });
+
+      pm.test("Expected business rule is present", function () {
+        pm.expect(requiredCheck).to.be.an("object");
+        pm.expect(requiredCheck.evaluated).to.eql(true);
+      });

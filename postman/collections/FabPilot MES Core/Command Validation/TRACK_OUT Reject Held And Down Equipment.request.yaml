@@ -1,0 +1,40 @@
+$kind: http-request
+name: 'TRACK_OUT Reject Held And Down Equipment'
+method: POST
+url: 'http://localhost:8080/api/command-validations'
+description: 'LOT-013 为 RUNNING+HELD 且绑定设备为 D+DOWN，应一次返回多项 Track Out 失败。'
+order: 13600
+headers:
+  Content-Type: application/json
+  X-Trace-Id: 'POSTMAN-VALIDATE-TRACK-OUT-001'
+body:
+  type: json
+  content: |-
+    {
+      "commandType": "TRACK_OUT",
+      "targetType": "LOT",
+      "targetCode": "LOT-013",
+      "expectedVersion": 4
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const json = pm.response.json();
+      const result = json.data;
+      const requiredCheck = result.checks.find(function (check) {
+        return check.ruleCode === "LOT_RELEASED";
+      });
+
+      pm.test("Command validation returns a structured result", function () {
+        pm.response.to.have.status(200);
+        pm.expect(json.success).to.eql(true);
+        pm.expect(result.commandType).to.eql("TRACK_OUT");
+        pm.expect(result.allowed).to.eql(false);
+        pm.expect(result.checks).to.be.an("array").that.is.not.empty;
+      });
+
+      pm.test("Expected business rule is present", function () {
+        pm.expect(requiredCheck).to.be.an("object");
+        pm.expect(requiredCheck.evaluated).to.eql(true);
+      });

@@ -1,0 +1,48 @@
+$kind: http-request
+name: '02 Validate Track In - Stale Version'
+method: POST
+url: 'http://localhost:8080/api/command-validations'
+description: '只读失败场景：故意发送过期版本 999；应只把 LOT_VERSION_MATCH 判为失败，并返回刷新 Lot 的建议。'
+order: 13100
+headers:
+  Content-Type: application/json
+  X-Trace-Id: 'POSTMAN-VALIDATE-TRACK-IN-STALE-001'
+body:
+  type: json
+  content: |-
+    {
+      "commandType": "TRACK_IN",
+      "targetType": "LOT",
+      "targetCode": "LOT-014",
+      "expectedVersion": 999,
+      "equipmentCode": "ETCH-02"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const json = pm.response.json();
+      const result = json.data;
+      const versionCheck = result.checks.find(function (check) {
+        return check.ruleCode === "LOT_VERSION_MATCH";
+      });
+
+      pm.test("Business precheck failure still returns HTTP 200", function () {
+        pm.response.to.have.status(200);
+        pm.expect(json.success).to.eql(true);
+        pm.expect(result.allowed).to.eql(false);
+      });
+
+      pm.test("Observed Lot version remains 2", function () {
+        pm.expect(result.targetCode).to.eql("LOT-014");
+        pm.expect(result.observedVersion).to.eql(2);
+        pm.expect(result.checks).to.have.length(13);
+      });
+
+      pm.test("LOT_VERSION_MATCH explains the stale request", function () {
+        pm.expect(versionCheck).to.be.an("object");
+        pm.expect(versionCheck.evaluated).to.eql(true);
+        pm.expect(versionCheck.passed).to.eql(false);
+        pm.expect(versionCheck.errorCode).to.eql("LOT_VERSION_CONFLICT");
+        pm.expect(versionCheck.suggestedActionTypes).to.include("REFRESH_LOT");
+      });

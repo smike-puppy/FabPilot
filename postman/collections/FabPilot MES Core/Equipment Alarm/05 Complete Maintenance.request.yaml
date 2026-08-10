@@ -1,0 +1,11 @@
+$kind: http-request
+name: 05 Complete Maintenance
+method: POST
+url: 'http://localhost:8080/api/equipment-events'
+order: 17000
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {"equipmentCode":"EQP-ALARM-TEST-01","eventCode":"COMPLETE_MAINTENANCE","expectedVersion":1,"idempotencyKey":"POSTMAN-ALARM-EQP-MAINT-COMPLETE-001","operatorId":"ENG-001","operatorType":"USER","reasonCode":"REPAIR_COMPLETED","reasonText":"真空系统维修完成，设备恢复待机"}
